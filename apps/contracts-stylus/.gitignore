@@ -1,0 +1,10 @@
+# Rust build
+/target/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store

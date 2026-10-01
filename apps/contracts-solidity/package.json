@@ -1,0 +1,9 @@
+{
+  "name": "@paraape/contracts-solidity",
+  "private": true,
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test",
+    "test:vvv": "forge test -vvv"
+  }
+}

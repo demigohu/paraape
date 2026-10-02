@@ -8,7 +8,10 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "contracts:build": "pnpm --filter @paraape/contracts-solidity build",
-    "contracts:test": "pnpm --filter @paraape/contracts-solidity test"
+    "contracts:test": "pnpm --filter @paraape/contracts-solidity test",
+    "keeper": "pnpm --filter @paraape/keeper start",
+    "indexer:dev": "pnpm --filter @paraape/indexer dev",
+    "indexer": "pnpm --filter @paraape/indexer start"
   },
   "devDependencies": {
     "prettier": "3.9.6",

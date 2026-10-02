@@ -132,7 +132,7 @@ forge script script/SetMockEthUsd.s.sol:SetMockEthUsd \
 
 ### Operational notes
 
-- **Keeper**: `createMarket` triggers an initial oracle record; ongoing samples happen on vault interactions or manual `recordPool` / future keeper.
+- **Keeper**: `createMarket` triggers an initial oracle record; ongoing samples via vault txs, manual `recordPool`, or the Node bot in [`apps/keeper`](../keeper/README.md) (VPS/systemd).
 - **Buying policies**: LP/token deployer cannot buy on the same market; use a **second wallet** for `purchasePolicy`.
 - **Locker**: testnet uses `ParaapeTestnetLocker` attestation; mainnet targets Pons / pools.trade (`PonsLockAdapter` is a stub).
 - **Broadcast artifacts**: `broadcast/**/run-latest.json` may be committed for reproducibility; timestamped `run-*.json` files are gitignored.

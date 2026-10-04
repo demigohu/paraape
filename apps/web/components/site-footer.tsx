@@ -35,7 +35,13 @@ export function SiteFooter() {
             <nav aria-label="Footer" className="flex flex-col gap-3 border-b border-fg p-6 md:border-b-0 md:border-r md:p-10">
               <span className="heading mb-3 text-xl">App</span>
               {NAV.map((item) => (
-                <Link key={item.href} href={item.href} className="mono-caps w-fit">
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  target={item.external ? "_blank" : undefined}
+                  rel={item.external ? "noopener noreferrer" : undefined}
+                  className="mono-caps w-fit"
+                >
                   <Roll>{item.label}</Roll>
                 </Link>
               ))}

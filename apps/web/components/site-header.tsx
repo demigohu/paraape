@@ -23,11 +23,13 @@ export function SiteHeader() {
         <div className="hidden items-center gap-10 md:flex">
           <nav aria-label="Primary" className="flex items-center gap-8">
             {NAV.map((item) => {
-              const active = pathname.startsWith(item.href);
+              const active = !item.external && pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  target={item.external ? "_blank" : undefined}
+                  rel={item.external ? "noopener noreferrer" : undefined}
                   aria-current={active ? "page" : undefined}
                   className={`relative flex items-center gap-2 py-2 text-xs uppercase tracking-[0.06em] ${
                     active ? "text-fg" : "text-fg-muted hover:text-fg"
@@ -77,8 +79,10 @@ export function SiteHeader() {
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    target={item.external ? "_blank" : undefined}
+                    rel={item.external ? "noopener noreferrer" : undefined}
                     onClick={() => setOpen(false)}
-                    aria-current={pathname.startsWith(item.href) ? "page" : undefined}
+                    aria-current={!item.external && pathname.startsWith(item.href) ? "page" : undefined}
                     className="display flex h-14 items-center border-b border-line text-[clamp(1.5rem,7vw,2rem)] aria-[current=page]:underline aria-[current=page]:decoration-signal aria-[current=page]:decoration-4 aria-[current=page]:underline-offset-4"
                   >
                     {item.label}

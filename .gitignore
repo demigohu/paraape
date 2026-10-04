@@ -11,6 +11,13 @@ node_modules
 
 # Local VPS runbook. Stays off GitHub.
 docs/vps-indexer-keeper.md
+
+# Pitch video working files. Stay off GitHub.
+videos/
+.hyperframes/
+.media/
+/public/
+/ElevenLabs_*.mp3
 .env.development.local
 .env.test.local
 .env.production.local

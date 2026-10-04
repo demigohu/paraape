@@ -255,8 +255,7 @@ This testnet build is not an audit. Cover here is contract behavior on testnet U
 | ----------- | -------------------------------------------- |
 | Live app    | [paraape.xyz](https://paraape.xyz)           |
 | Docs        | [docs.paraape.xyz](https://docs.paraape.xyz) |
-| Pitch video | [YouTube](https://youtu.be/REPLACE_ME)       |
-| Pitch deck  | [Deck](https://REPLACE_ME)                   |
+| Pitch video | [YouTube](https://youtu.be/zDQDoKbsViI)      |
 
 ---
 

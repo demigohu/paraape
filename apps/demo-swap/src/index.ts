@@ -13,11 +13,14 @@ import {
   demoPoolKey,
   MAX_SQRT_PRICE,
   memeIsCurrency0,
+  memeRawForUsdgRaw,
   MIN_SQRT_PRICE,
   poolRefFromKey,
+  poolStateSlot,
+  sqrtPriceX96FromSlot0,
   type DemoPoolKey,
 } from "./pool-key.ts";
-import { erc20Abi, priceObserverAbi, v4SwapRouterAbi } from "./abi.ts";
+import { erc20Abi, poolManagerAbi, priceObserverAbi, v4SwapRouterAbi } from "./abi.ts";
 
 function requireEnv(name: string): string {
   const v = process.env[name]?.trim();
@@ -71,8 +74,25 @@ async function writeContractRetry(
   throw lastErr;
 }
 
-function memeAmountForUsdgNotional(usdgAmount: bigint): bigint {
-  return usdgAmount * 1_000_000_000_000n;
+function formatUnits(amount: bigint, decimals: number): string {
+  const base = 10n ** BigInt(decimals);
+  const whole = amount / base;
+  const frac = (amount % base).toString().padStart(decimals, "0").slice(0, 4);
+  return `${whole}.${frac}`;
+}
+
+async function readSqrtPriceX96(
+  publicClient: ReturnType<typeof createPublicClient>,
+  poolManager: Address,
+  poolRef: Hex,
+): Promise<bigint> {
+  const data = await publicClient.readContract({
+    address: poolManager,
+    abi: poolManagerAbi,
+    functionName: "extsload",
+    args: [poolStateSlot(poolRef)],
+  });
+  return sqrtPriceX96FromSlot0(data);
 }
 
 async function ensureAllowance(
@@ -132,21 +152,11 @@ async function swapExactMemeForUsdg(
   router: Address,
   key: DemoPoolKey,
   memeIsC0: boolean,
-  meme: Address,
   holder: Address,
-  usdgNotional: bigint,
+  memeAmount: bigint,
 ) {
   const zeroForOne = memeIsC0;
-  let amountIn = memeAmountForUsdgNotional(usdgNotional);
-  const bal = await publicClient.readContract({
-    address: meme,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [holder],
-  });
-  if (amountIn > bal) amountIn = bal / 4n;
-  if (amountIn === 0n) amountIn = bal > 0n ? bal / 100n : 10n ** 15n;
-
+  const amountIn = memeAmount;
   const limit = zeroForOne ? MIN_SQRT_PRICE + 1n : MAX_SQRT_PRICE - 1n;
   const hash = await writeContractRetry(client, publicClient, holder, {
     address: router,
@@ -187,13 +197,24 @@ async function tryRecord(
   }
 }
 
+type Trader = {
+  label: string;
+  meme: Address;
+  memeDecimals: number;
+  account: ReturnType<typeof privateKeyToAccount>;
+  wallet: ReturnType<typeof createWalletClient>;
+  key: DemoPoolKey;
+  poolRef: Hex;
+  memeIsC0: boolean;
+  buyNext: boolean;
+};
+
 async function main() {
   const rpcUrl = requireEnv("ROBINHOOD_TESTNET_RPC_URL");
-  const pk = requireEnv("PRIVATE_KEY") as Hex;
   const usdg = requireEnv("USDG_ADDRESS") as Address;
-  const meme = requireEnv("DEMO_MEME_ADDRESS") as Address;
   const chainId = Number(envOr("CHAIN_ID", "46630"));
-  const swapCount = Number(envOr("SIM_SWAP_COUNT", "12"));
+  const swapCount = Number(envOr("SIM_SWAP_COUNT", "0"));
+  const continuous = envOr("SIM_CONTINUOUS", swapCount === 0 ? "1" : "0") === "1";
   const usdgPerSwap = BigInt(envOr("SIM_USDG_PER_SWAP", "500000"));
   const recordAfter = envOr("SIM_RECORD_AFTER_SWAP", "0") !== "0";
   const buyOnly = envOr("SIM_BUY_ONLY", "0") !== "0";
@@ -201,6 +222,7 @@ async function main() {
   if (buyOnly && sellOnly) throw new Error("Set only one of SIM_BUY_ONLY or SIM_SELL_ONLY");
   const sleepMs = Number(envOr("SIM_SLEEP_MS", "5000"));
   const observer = process.env.PRICE_OBSERVER_ADDRESS?.trim() as Address | undefined;
+  const poolManager = requireEnv("POOL_MANAGER_ADDRESS") as Address;
 
   let router = process.env.V4_SWAP_ROUTER_ADDRESS?.trim() as Address | undefined;
   const deployFlag = envOr("DEPLOY_SWAP_ROUTER", "0") === "1";
@@ -212,89 +234,181 @@ async function main() {
     rpcUrls: { default: { http: [rpcUrl] } },
   } as const;
 
-  const account = privateKeyToAccount(pk);
   const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
-  const walletClient = createWalletClient({
-    account,
-    chain,
-    transport: http(rpcUrl),
-  });
+
+  const specs: { label: string; memeEnv: string; keyEnv: string }[] = [
+    { label: "market-1", memeEnv: "DEMO_MEME_ADDRESS", keyEnv: "PRIVATE_KEY" },
+  ];
+  if (process.env.DEMO_MEME_ADDRESS_2?.trim()) {
+    specs.push({
+      label: "market-2",
+      memeEnv: "DEMO_MEME_ADDRESS_2",
+      keyEnv: process.env.PRIVATE_KEY_2?.trim() ? "PRIVATE_KEY_2" : "PRIVATE_KEY",
+    });
+    if (!process.env.PRIVATE_KEY_2?.trim()) {
+      console.warn(
+        "[demo-swap] PRIVATE_KEY_2 is empty, so both markets share PRIVATE_KEY. Put a second key in PRIVATE_KEY_2.",
+      );
+    }
+  }
+
+  const usdgDecimals = Number(
+    await publicClient.readContract({
+      address: usdg,
+      abi: erc20Abi,
+      functionName: "decimals",
+    }),
+  );
+
+  const traders: Trader[] = [];
+  let deployWallet: ReturnType<typeof createWalletClient> | undefined;
+
+  for (const spec of specs) {
+    const meme = requireEnv(spec.memeEnv) as Address;
+    const account = privateKeyToAccount(requireEnv(spec.keyEnv) as Hex);
+    const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
+    deployWallet ??= wallet;
+    const key = demoPoolKey(meme, usdg);
+    const symbol = await publicClient
+      .readContract({ address: meme, abi: erc20Abi, functionName: "symbol" })
+      .catch(() => spec.label);
+    const memeDecimals = Number(
+      await publicClient.readContract({
+        address: meme,
+        abi: erc20Abi,
+        functionName: "decimals",
+      }),
+    );
+    traders.push({
+      label: symbol,
+      meme,
+      memeDecimals,
+      account,
+      wallet,
+      key,
+      poolRef: poolRefFromKey(key),
+      memeIsC0: memeIsCurrency0(meme, key),
+      buyNext: !sellOnly,
+    });
+  }
 
   if (!router) {
-    if (!deployFlag) {
+    if (!deployFlag || !deployWallet) {
       throw new Error(
         "Set V4_SWAP_ROUTER_ADDRESS or DEPLOY_SWAP_ROUTER=1 + POOL_MANAGER_ADDRESS",
       );
     }
-    const poolManager = requireEnv("POOL_MANAGER_ADDRESS") as Address;
     console.log("[demo-swap] deploying V4SwapRouter…");
-    router = await deploySwapRouter(publicClient, walletClient, poolManager);
+    router = await deploySwapRouter(publicClient, deployWallet, poolManager);
     console.log(`[demo-swap] V4_SWAP_ROUTER_ADDRESS=${router}`);
   }
 
-  const key = demoPoolKey(meme, usdg);
-  const poolRef = poolRefFromKey(key);
-  const memeIsC0 = memeIsCurrency0(meme, key);
-
-  console.log(`[demo-swap] poolRef=${poolRef}`);
   console.log(
-    `[demo-swap] memeIsCurrency0=${memeIsC0} swaps=${swapCount} usdgPerSwap=${usdgPerSwap} buyOnly=${buyOnly} sellOnly=${sellOnly}`,
+    `[demo-swap] markets=${traders.map((t) => t.label).join(",")} usdgPerSwap=${formatUnits(usdgPerSwap, usdgDecimals)} USDG continuous=${continuous} buyOnly=${buyOnly} sellOnly=${sellOnly}`,
   );
   if (sellOnly) {
     console.warn(
-      "[demo-swap] sell-only dumps the meme. Use the deployer key, not the policy buyer — settle reverts if the buyer sells the bag.",
-    );
-  } else if (!buyOnly) {
-    console.warn(
-      "[demo-swap] PAPE→USDG legs crash thin demo LP — Protect USD labels will drop. Use SIM_BUY_ONLY=1 for vol without nuking price.",
+      "[demo-swap] sell-only walks the price down. Do not sell from a wallet that holds an active policy.",
     );
   }
 
-  await ensureAllowance(walletClient, publicClient, usdg, router, account.address);
-  await ensureAllowance(walletClient, publicClient, meme, router, account.address);
+  for (const trader of traders) {
+    console.log(
+      `[demo-swap] ${trader.label} wallet=${trader.account.address} poolRef=${trader.poolRef}`,
+    );
+    await ensureAllowance(
+      trader.wallet,
+      publicClient,
+      usdg,
+      router,
+      trader.account.address,
+    );
+    await ensureAllowance(
+      trader.wallet,
+      publicClient,
+      trader.meme,
+      router,
+      trader.account.address,
+    );
+  }
 
-  for (let i = 0; i < swapCount; i++) {
-    const dumpPape = sellOnly ? false : buyOnly || i % 2 === 0;
-    const hash = dumpPape
-      ? await swapExactUsdgForMeme(
-          walletClient,
+  let stop = false;
+  process.on("SIGINT", () => {
+    stop = true;
+    console.log("[demo-swap] stopping after the current swap");
+  });
+
+  for (let i = 0; continuous ? !stop : i < swapCount && !stop; i++) {
+    const trader = traders[i % traders.length]!;
+    const buy = sellOnly ? false : buyOnly || trader.buyNext;
+    if (!buyOnly && !sellOnly) trader.buyNext = !trader.buyNext;
+
+    try {
+      if (buy) {
+        const hash = await swapExactUsdgForMeme(
+          trader.wallet,
           publicClient,
           router,
-          key,
-          memeIsC0,
+          trader.key,
+          trader.memeIsC0,
           usdgPerSwap,
-          account.address,
-        )
-      : await swapExactMemeForUsdg(
-          walletClient,
-          publicClient,
-          router,
-          key,
-          memeIsC0,
-          meme,
-          account.address,
-          usdgPerSwap,
+          trader.account.address,
         );
-
-    console.log(`[demo-swap] swap ${i} ${dumpPape ? "USDG→PAPE" : "PAPE→USDG"} tx=${hash}`);
+        console.log(
+          `[demo-swap] ${trader.label} buy ${formatUnits(usdgPerSwap, usdgDecimals)} USDG tx=${hash}`,
+        );
+      } else {
+        const sqrtPriceX96 = await readSqrtPriceX96(
+          publicClient,
+          poolManager,
+          trader.poolRef,
+        );
+        const memeIn = memeRawForUsdgRaw(usdgPerSwap, sqrtPriceX96, trader.memeIsC0);
+        const bal = await publicClient.readContract({
+          address: trader.meme,
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [trader.account.address],
+        });
+        if (memeIn === 0n || bal < memeIn) {
+          console.log(
+            `[demo-swap] ${trader.label} skip sell: need ${formatUnits(memeIn, trader.memeDecimals)} ${trader.label}, wallet has ${formatUnits(bal, trader.memeDecimals)}`,
+          );
+        } else {
+          const hash = await swapExactMemeForUsdg(
+            trader.wallet,
+            publicClient,
+            router,
+            trader.key,
+            trader.memeIsC0,
+            trader.account.address,
+            memeIn,
+          );
+          console.log(
+            `[demo-swap] ${trader.label} sell ${formatUnits(memeIn, trader.memeDecimals)} ${trader.label} (~${formatUnits(usdgPerSwap, usdgDecimals)} USDG) tx=${hash}`,
+          );
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`[demo-swap] ${trader.label} swap failed: ${msg.slice(0, 180)}`);
+    }
 
     if (recordAfter && observer) {
-      if (sleepMs > 0) {
-        console.log(
-          `[demo-swap] sleep ${sleepMs}ms before record (PriceObserver minRecordInterval ~30s)…`,
-        );
-        await sleep(sleepMs);
-      }
-      await tryRecord(walletClient, publicClient, observer, poolRef, account.address);
-    } else if (sleepMs > 0 && i + 1 < swapCount) {
-      console.log(`[demo-swap] sleep ${sleepMs}ms before next swap…`);
+      if (sleepMs > 0) await sleep(sleepMs);
+      await tryRecord(
+        trader.wallet,
+        publicClient,
+        observer,
+        trader.poolRef,
+        trader.account.address,
+      );
+    } else if (sleepMs > 0 && !stop) {
       await sleep(sleepMs);
     }
   }
 
-  console.log(
-    "[demo-swap] done — keeper handles PriceObserver.record; refresh Protect when TWAP updates",
-  );
+  console.log("[demo-swap] stopped. The keeper still records. Refresh Protect after the TWAP moves.");
 }
 
 main().catch((e) => {

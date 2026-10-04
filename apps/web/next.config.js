@@ -8,7 +8,11 @@ const nextConfig = {
     "@base-org/account",
   ],
   async rewrites() {
-    const target = process.env.INDEXER_PROXY_URL ?? "http://127.0.0.1:42069";
+    const target = process.env.INDEXER_PROXY_URL?.trim().replace(/\/$/, "") ?? "";
+    const loopback = /^(https?:\/\/)?(127\.0\.0\.1|localhost)(:|\/|$)/.test(target);
+    if (!/^https?:\/\//.test(target) || (process.env.NODE_ENV === "production" && loopback)) {
+      return [];
+    }
     return [
       {
         source: "/api/indexer/:path*",

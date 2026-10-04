@@ -34,9 +34,9 @@ Copy `V4_SWAP_ROUTER_ADDRESS` into `apps/demo-swap/.env`. Setting `DEPLOY_SWAP_R
 pnpm --filter @paraape/demo-swap start
 ```
 
-Defaults when the env values are set as in a typical demo: 12 swaps, 0.5 USDG of notional, 5 seconds apart. The script does not call `PriceObserver.record` unless `SIM_RECORD_AFTER_SWAP=1`. Leave that at `0` and run the [keeper](../keeper/README.md) so samples stay on the 30-second cadence.
+`SIM_SWAP_COUNT=0` (or `SIM_CONTINUOUS=1`) keeps swapping until Ctrl+C. The script does not call `PriceObserver.record` unless `SIM_RECORD_AFTER_SWAP=1`. Leave that at `0` and run the [keeper](../keeper/README.md) so samples stay on the 30-second cadence.
 
-On a **buy**, `SIM_USDG_PER_SWAP` is USDG in (6 decimals, so `500000` is 0.5 USDG). On a **sell**, that same number is turned into a meme amount at `× 1e12`. `500000` sells 0.5 tokens. A 0.5 token sell does not move a pool of 1B tokens and 10,000 USDG.
+`SIM_USDG_PER_SWAP` is a 6-decimal USDG notional (`100000000` is 100 USDG). A buy spends that USDG. A sell spends the meme amount that is worth the same USDG at the current pool price. The old `× 1e12` conversion treated 1 meme token as 1 USDG, so a 100 USDG buy was paired with a 100-token sell.
 
 ## Move price on purpose
 
@@ -55,7 +55,7 @@ Leave the keeper running. Realized vol is whatever the risk engine reads from `P
 
 Do not sell from the buyer. Cover pays only if that wallet still holds the balance recorded at purchase.
 
-`SIM_SELL_ONLY=1` uses the same notional conversion as above, so raise `SIM_USDG_PER_SWAP` until the sell is large relative to the 1B-token pool. The wallet must already hold those tokens. `DemoToken.mint` is public on the testnet tokens; mint to the deployer, then sell.
+`SIM_SELL_ONLY=1` sells the meme amount worth `SIM_USDG_PER_SWAP` at the spot price. The wallet has to hold that many tokens. `DemoToken.mint` is public on the testnet tokens.
 
 One large sell is a settle test. Many small buys are a vol test. Mixing them on a thin pool moves the USD price the Protect page shows, because that label is balance times the 5-minute average.
 
@@ -71,13 +71,16 @@ Use a different `PRIVATE_KEY` from the keeper when both broadcast. This script r
 | --- | --- |
 | `CHAIN_ID` | `46630` |
 | `ROBINHOOD_TESTNET_RPC_URL` | HTTP RPC |
-| `PRIVATE_KEY` | Wallet that swaps. Deployer, for a crash. A second key, if the keeper shares the deployer |
-| `DEMO_MEME_ADDRESS` | Meme from `DeployDemoMarket` |
+| `PRIVATE_KEY` | Wallet for `DEMO_MEME_ADDRESS`. Not the keeper key |
+| `PRIVATE_KEY_2` | Wallet for `DEMO_MEME_ADDRESS_2`. If empty, both markets share `PRIVATE_KEY` |
+| `DEMO_MEME_ADDRESS` | First meme/USDG pool |
+| `DEMO_MEME_ADDRESS_2` | Second meme/USDG pool. Leave empty to trade one market |
 | `USDG_ADDRESS` | Same USDG as the pool |
 | `V4_SWAP_ROUTER_ADDRESS` | `swapRouter` from `DeployParaape` |
 | `POOL_MANAGER_ADDRESS` | Required for `DEPLOY_SWAP_ROUTER=1` |
-| `SIM_SWAP_COUNT` | How many swaps |
-| `SIM_USDG_PER_SWAP` | 6-decimal notional. Buys spend it. Sells convert it with `× 1e12` |
+| `SIM_SWAP_COUNT` | Stop after this many swaps. `0` runs until Ctrl+C |
+| `SIM_CONTINUOUS` | `1` ignores `SIM_SWAP_COUNT` and runs until Ctrl+C |
+| `SIM_USDG_PER_SWAP` | 6-decimal USDG notional. Buys spend it. Sells size the meme from the spot price |
 | `SIM_SLEEP_MS` | Pause between swaps |
 | `SIM_BUY_ONLY` | `1` keeps the sell leg off |
 | `SIM_SELL_ONLY` | `1` keeps the buy leg off |

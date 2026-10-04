@@ -1,10 +1,6 @@
 import type { Metadata } from "next";
 import { Archivo } from "next/font/google";
 import localFont from "next/font/local";
-import { headers } from "next/headers";
-import type { Config } from "@wagmi/core";
-import { cookieToInitialState } from "wagmi";
-import { wagmiConfig } from "@/config/reown-wagmi";
 import { Chrome } from "@/components/chrome";
 import { Web3Providers } from "@/components/providers";
 import { SiteFooter } from "@/components/site-footer";
@@ -33,20 +29,15 @@ export const metadata: Metadata = {
   icons: { icon: "/paraape_logo.png" },
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const initialState = cookieToInitialState(
-    wagmiConfig as Config,
-    (await headers()).get("cookie"),
-  );
-
   return (
     <html lang="en" className={`${geistMono.variable} ${archivo.variable}`}>
       <body className="flex min-h-[100dvh] flex-col antialiased">
-        <Web3Providers initialState={initialState}>
+        <Web3Providers>
           <a
             href="#main"
             className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:bg-signal focus:px-4 focus:py-2 focus:text-fg"

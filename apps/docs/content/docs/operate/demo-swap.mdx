@@ -13,12 +13,9 @@ Fill `.env` with the RPC, a key, `USDG_ADDRESS`, `DEMO_MEME_ADDRESS`, `POOL_MANA
 
 ## What a swap size means
 
-`SIM_USDG_PER_SWAP` is a 6-decimal notional. `500000` is 0.5 USDG.
+`SIM_USDG_PER_SWAP` is a 6-decimal USDG notional. `100000000` is 100 USDG.
 
-- On a **buy**, that notional is USDG in.
-- On a **sell**, the script turns it into a meme amount with `× 1e12`. `500000` sells 0.5 tokens.
-
-A 0.5 token sell does not move a pool of 1 billion tokens and 10,000 USDG.
+A buy spends that USDG. A sell spends the meme amount worth the same USDG at the current pool price. `SIM_CONTINUOUS=1` keeps both legs going until the process stops. Set `DEMO_MEME_ADDRESS_2` and `PRIVATE_KEY_2` to trade a second pool with a second wallet.
 
 ## Two jobs
 

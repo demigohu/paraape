@@ -2,7 +2,7 @@
 
 import { createAppKit } from "@reown/appkit/react";
 import { reownProjectId, wagmiAdapter } from "@/config/reown-wagmi";
-import { robinhoodAppKitNetwork, robinhoodRpc } from "@/lib/chains";
+import { robinhoodAppKitNetwork, robinhoodRpcUrl } from "@/lib/chains";
 import { APP_URL } from "@/lib/env";
 
 createAppKit({
@@ -17,7 +17,7 @@ createAppKit({
     icons: [`${APP_URL}/paraape_logo.png`],
   },
   customRpcUrls: {
-    "eip155:46630": [{ url: robinhoodRpc }],
+    "eip155:46630": [{ url: robinhoodRpcUrl() }],
   },
   themeVariables: {
     "--w3m-accent": "#ff641c",

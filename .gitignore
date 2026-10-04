@@ -8,6 +8,9 @@ node_modules
 # Local env files
 .env
 .env.local
+
+# Local VPS runbook. Stays off GitHub.
+docs/vps-indexer-keeper.md
 .env.development.local
 .env.test.local
 .env.production.local

@@ -31,7 +31,7 @@ Next loads `.env`. Restart `pnpm dev` after you change it.
 
 | Variable | Notes |
 | --- | --- |
-| `NEXT_PUBLIC_ROBINHOOD_TESTNET_RPC_URL` | RPC the browser uses. Empty falls back to the public testnet RPC |
+| `ROBINHOOD_TESTNET_RPC_URL` | Server-only upstream. The browser calls `/api/rpc` on this app |
 | `NEXT_PUBLIC_USDG_ADDRESS` | Same USDG as `apps/contracts-solidity/.env` |
 | `NEXT_PUBLIC_FACTORY_ADDRESS` | `factory` from `DeployParaape` |
 | `NEXT_PUBLIC_LOCKER_ADDRESS` | `locker` from `DeployParaape` |

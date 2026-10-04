@@ -1,8 +1,18 @@
 import { defineChain } from "@reown/appkit/networks";
 
-const rpc =
-  process.env.NEXT_PUBLIC_ROBINHOOD_TESTNET_RPC_URL?.trim() ||
-  "https://rpc.testnet.robinhood.com";
+/** Same-origin proxy. `ROBINHOOD_TESTNET_RPC_URL` is read only by `app/api/rpc`. */
+export function robinhoodRpcUrl(): string {
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api/rpc`;
+  }
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:3000/api/rpc";
+  }
+  const app = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://paraape.xyz";
+  return `${app}/api/rpc`;
+}
+
+const rpc = robinhoodRpcUrl();
 
 /** Robinhood Chain testnet — chain ID 46630 (Reown AppKit + wagmi). */
 export const robinhoodAppKitNetwork = defineChain({

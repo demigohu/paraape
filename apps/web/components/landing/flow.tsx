@@ -5,20 +5,20 @@ import { gsap, SplitText, useGSAP } from "@/lib/gsap";
 
 const STEPS = [
   {
-    title: "Paste the contract address",
-    body: "No market yet? The factory deploys an isolated vault for that token, permissionlessly.",
+    title: "Bring the coin",
+    body: "Paste the address. If nobody is backing it yet, a USDG deposit opens it. That coin's money never mixes with another.",
   },
   {
-    title: "Pick severity and window",
-    body: "Choose how deep and how fast a crash must be. Quotes update from live volatility.",
+    title: "Name the crash",
+    body: "How far it has to fall, and how long you want to be covered: a day, three days, a week, two weeks, or a month.",
   },
   {
-    title: "Pay the premium in USDG",
-    body: "Your wallet balance is checked first. Protection only covers tokens you actually hold.",
+    title: "Pay in USDG",
+    body: "Only coins still in your wallet count. Cover turns on about half an hour after you pay.",
   },
   {
-    title: "Get paid, or let it expire",
-    body: "If TWAP confirms the trigger, a keeper settles and USDG arrives. If not, the premium is LP yield.",
+    title: "Get paid, or don't",
+    body: "Still down that far? USDG hits your wallet. It bounced? The premium stays with the people who backed you.",
   },
 ];
 

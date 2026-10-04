@@ -16,25 +16,25 @@ type Guard = {
 
 const GUARDS: Guard[] = [
   {
-    title: "Self-dealing check",
-    body: "At settlement the vault checks whether the policy holder was a major seller during the crash window. If so, the claim is rejected.",
-    stops: "Buyers crashing a token to trigger their own payout",
+    title: "You still have to hold it",
+    body: "Sell the coins and the payout dies with them. This pays holders, not the wallet that dumped.",
+    stops: "Cover bought, then sold by the same wallet",
     icon: UserMinus,
     tone: "bg-inverse text-on-inverse",
     muted: "text-on-inverse-muted",
   },
   {
-    title: "Payout cap vs pool depth",
-    body: "Each policy's maximum payout sits below the estimated cost of pushing that pool's price down by the trigger severity.",
-    stops: "Manipulation that costs more than it pays",
+    title: "The crash has to cost more",
+    body: "What you can collect stays under the cost of forcing that fall in the pool.",
+    stops: "A payout bigger than the shove",
     icon: Scales,
     tone: "bg-signal text-fg",
     muted: "text-fg",
   },
   {
-    title: "Minimum liquidity floor",
-    body: "Tokens whose Uniswap V4 pool sits below the TVL floor cannot be insured at all.",
-    stops: "Thin pools that anyone could move",
+    title: "Skinny pools stay out",
+    body: "If a small trade can fake the crash, that coin does not get a market.",
+    stops: "Pools anyone can shove",
     icon: Drop,
     tone: "bg-surface-raised text-fg border border-fg",
     muted: "text-fg-muted",
@@ -102,13 +102,13 @@ export function Safeguards() {
   return (
     <section ref={root} data-pose="guards" aria-labelledby="guards-title" className="mx-auto max-w-[1400px] px-4 pt-28 md:px-8 md:pt-40">
       <h2 id="guards-title" className="sr-only">
-        Three checks between a manipulator and the pool
+        Three reasons a fake crash does not get paid
       </h2>
       <p aria-hidden data-guards-title className="display text-[clamp(3rem,8vw,8rem)]">
         Defense
       </p>
       <p className="mono-caps mt-6 max-w-[40ch] text-fg-muted">
-        Three checks stand between a manipulator and the pool.
+        Three reasons a fake crash does not get paid.
       </p>
 
       <div className="flex flex-col gap-6 pb-10 pt-14 md:max-w-[62%] md:gap-[16vh] md:pb-24">

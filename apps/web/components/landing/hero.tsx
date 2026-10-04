@@ -80,8 +80,8 @@ export function Hero() {
       <div data-hero-reveal className="order-3 flex flex-col gap-6 md:order-2 md:max-w-[34ch]">
         <p className="mono-caps text-fg-muted">About</p>
         <p data-hero-body className="mono-caps">
-          Buy protection on the memecoin you hold. If it crashes 85% inside 10 minutes, USDG lands
-          in your wallet automatically. No claim form.
+          The bag stays yours. Name the crash. If the coin falls that far, you get paid in USDG.
+          Nobody has to approve it.
         </p>
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link data-hero-cta href="/protect" className="btn btn-primary">

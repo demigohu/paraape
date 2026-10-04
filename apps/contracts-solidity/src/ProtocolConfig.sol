@@ -13,9 +13,10 @@ struct ProtocolConfig {
     uint32 challengePeriod;
     uint16 protocolFeeBps; // 5% → 500
     uint256 minDepthUsdg;
-    uint256 minPremiumUsdg;
+    uint256 minPremiumUsdg; // absolute floor per policy (6-dec USDG)
+    uint16 minPremiumBps; // notional floor: max(minPremiumUsdg, coverage × bps / 10_000)
     uint256 maxPremiumBps; // max rate per duration cap
-    uint256 challengeBondUsdg;
+    uint256 challengeSpamFeeUsdg; // charged only when a recheck still meets the trigger
     uint256 recordBountyUsdg;
 }
 
@@ -31,9 +32,10 @@ library ProtocolConfigLib {
         c.challengePeriod = 2 hours;
         c.protocolFeeBps = 500;
         c.minDepthUsdg = 25_000e6;
-        c.minPremiumUsdg = 1e6;
+        c.minPremiumUsdg = 1e6; // $1 absolute minimum
+        c.minPremiumBps = 100; // 1% of coverage minimum (scales with notional)
         c.maxPremiumBps = 5000; // 50% of coverage max per policy (sanity bound)
-        c.challengeBondUsdg = 500e6;
+        c.challengeSpamFeeUsdg = 10e6;
         c.recordBountyUsdg = 1e6;
     }
 }

@@ -13,6 +13,8 @@ contract ParaapeRiskEngine is IRiskEngine {
     /// 15% expense load on top of expected-hit rate
     uint256 internal constant LOAD_WAD = 15e16;
     uint256 internal constant UTIL_KINK = 8e17;
+    /// Reference jump rate (WAD) at 50% severity / 5m window before severity & window scaling
+    uint256 internal constant BASE_JUMP_WAD = 80e14; // 0.8%
 
     function realizedVol(bytes calldata observerPayload) external pure returns (uint256 sigma1e18) {
         return _realizedVol(observerPayload);
@@ -29,8 +31,7 @@ contract ParaapeRiskEngine is IRiskEngine {
     ) external pure returns (uint256 premiumUsdg) {
         uint256 p = _pDrawdown(sigma1e18, severityBps, windowSec);
         uint256 jump = _jumpFloor(severityBps, windowSec);
-        uint256 nWindows = FullMath.mulDiv(durationSec, WAD, windowSec);
-        uint256 unionBound = WadMath.min(WAD, WadMath.wMul(p, nWindows));
+        uint256 unionBound = _unionHitRateWad(p, durationSec, windowSec);
         uint256 rate = WadMath.max(jump, unionBound);
         uint256 load = WAD + LOAD_WAD + cellUtilization1e18 / 2;
         rate = WadMath.wMul(rate, load);
@@ -47,8 +48,8 @@ contract ParaapeRiskEngine is IRiskEngine {
     ) external pure returns (uint256 apyBps) {
         uint256 p = _pDrawdown(sigma1e18, severityBps, windowSec);
         uint256 jump = _jumpFloor(severityBps, windowSec);
-        uint256 nYear = FullMath.mulDiv(365 days, WAD, windowSec);
-        uint256 rateYear = WadMath.min(WAD, WadMath.max(jump, WadMath.wMul(p, nYear)));
+        uint256 unionYear = _unionHitRateWad(p, uint32(365 days), windowSec);
+        uint256 rateYear = WadMath.max(jump, unionYear);
         rateYear = WadMath.wMul(rateYear, WAD + LOAD_WAD + utilization1e18 / 2);
         rateYear = WadMath.wMul(rateYear, _utilizationMultiplier(utilization1e18));
         apyBps = rateYear * 10_000 / WAD;
@@ -141,16 +142,37 @@ contract ParaapeRiskEngine is IRiskEngine {
         return p > WAD ? WAD : p;
     }
 
-    /// @dev Minimum rate for (s, w): cheaper as the trigger gets stricter (higher s, shorter w).
+    /// @dev P(≥1 trigger in policy duration) ≈ 1 − (1−p)^k, k = ⌈duration / window⌉ (B3).
+    function _unionHitRateWad(uint256 pWad, uint32 durationSec, uint32 windowSec) internal pure returns (uint256) {
+        if (pWad == 0) return 0;
+        if (pWad >= WAD) return WAD;
+        if (windowSec == 0 || durationSec <= windowSec) return pWad;
+        uint256 k = (uint256(durationSec) + windowSec - 1) / windowSec;
+        if (k > 4096) k = 4096;
+        uint256 survive = _wadPow(WAD - pWad, k);
+        return WAD - survive;
+    }
+
+    /// @dev (base/WAD)^exp × WAD via binary exponentiation; base, result in WAD.
+    function _wadPow(uint256 baseWad, uint256 exp) internal pure returns (uint256) {
+        if (exp == 0) return WAD;
+        uint256 result = WAD;
+        while (exp > 0) {
+            if (exp & 1 != 0) result = WadMath.wMul(result, baseWad);
+            baseWad = WadMath.wMul(baseWad, baseWad);
+            exp >>= 1;
+        }
+        return result;
+    }
+
+    /// @dev Memecoin jump floor: higher severity & shorter windows → higher minimum rate (PRD §10 v2).
     function _jumpFloor(uint16 severityBps, uint32 windowSec) internal pure returns (uint256) {
-        uint256 remain = uint256(10_000 - severityBps); // 5000 at 50%, 500 at 95%
-        uint256 time = WadMath.sqrtWad(uint256(windowSec) * WAD / 1 days);
-        if (time == 0) time = 1;
-        // 30 bps * (remain/5000) * sqrt(w / 1 day)  — 5m window: sqrt(300/86400)≈0.059
-        // For 5m use a floor that is not vanishing: mix with sqrt(w/5m)
-        uint256 time5m = WadMath.sqrtWad(uint256(windowSec) * WAD / 5 minutes);
-        if (time5m == 0) time5m = 1;
-        return 3e15 * remain / 5000 * time5m / WAD;
+        uint256 sWad = uint256(severityBps) * WAD / 10_000;
+        uint256 severityFactor = WAD + sWad; // 1.5 @ 50%, 1.9 @ 90%
+        uint256 windowFactor =
+            WadMath.wDiv(WAD, WadMath.sqrtWad(uint256(windowSec) * WAD / 5 minutes));
+        if (windowFactor < WAD / 10) windowFactor = WAD / 10;
+        return WadMath.wMul(BASE_JUMP_WAD, WadMath.wMul(severityFactor, windowFactor));
     }
 
     function _utilizationMultiplier(uint256 uWad) internal pure returns (uint256) {

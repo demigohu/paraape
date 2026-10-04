@@ -90,7 +90,7 @@ contract ParaapeFixture is Test {
         usdg.mint(lp, 200_000e6);
         vm.startPrank(lp);
         usdg.approve(vault, type(uint256).max);
-        InsuranceVault(vault).deposit(4, 0, 50_000e6);
+        InsuranceVault(vault).deposit(4, 50_000e6);
         vm.stopPrank();
     }
 }

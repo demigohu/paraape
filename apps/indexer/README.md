@@ -1,62 +1,71 @@
-# Paraape indexer (Ponder)
+# Paraape indexer
 
-Indexes **Robinhood testnet (46630)** Paraape contracts for read APIs: markets (paste-CA), policies, oracle sample metadata. Deploy on a VPS beside the [record keeper](../keeper/README.md).
+[Ponder](https://ponder.sh) index of the Paraape contracts on Robinhood Chain testnet (chain ID **46630**). The web app reads markets, policies, LP positions, and the activity feed from here. The [keeper](../keeper/README.md) reads `GET /keeper/targets`.
 
 ## Setup
+
+From the repo root, `pnpm install` once. Then:
 
 ```bash
 cd apps/indexer
 cp .env.example .env
-# fill RPC, MARKET_FACTORY_ADDRESS, MARKET_FACTORY_START_BLOCK, PRICE_OBSERVER_ADDRESS
-# Optional overrides: .env.local (loaded after .env)
-
-pnpm install   # from repo root once
-pnpm dev       # local: sync + API on http://localhost:42069 (no DATABASE_SCHEMA)
-pnpm start     # production: requires DATABASE_SCHEMA (+ DATABASE_URL on VPS)
+pnpm dev
 ```
 
-Reuse contract env:
+`pnpm dev` syncs and serves `http://localhost:42069`. It does not need `DATABASE_SCHEMA`. `pnpm start` does. On a VPS, set `DATABASE_SCHEMA` and `DATABASE_URL` (Postgres). Dev uses embedded PGlite.
+
+`.env.local` overrides `.env` when both exist.
+
+Point it at the factory from `DeployParaape`:
 
 ```bash
 set -a && source ../contracts-solidity/.env && set +a
 export PONDER_RPC_URL_46630="$ROBINHOOD_TESTNET_RPC_URL"
 export MARKET_FACTORY_ADDRESS="$FACTORY_ADDRESS"
-export MARKET_FACTORY_START_BLOCK=…   # factory deploy block (decimal)
-export PRICE_OBSERVER_ADDRESS=0x…
+export MARKET_FACTORY_START_BLOCK=<factory creation block>
+export PRICE_OBSERVER_ADDRESS="$PRICE_OBSERVER_ADDRESS"
 pnpm dev
 ```
 
-## HTTP routes (custom)
+`MARKET_FACTORY_START_BLOCK` has to be the block that created this factory. An earlier block replays old factories. A later block misses markets.
 
-| Route | Description |
+Restart the process after changing the factory or the start block.
+
+## HTTP
+
+| Route | Returns |
 | --- | --- |
-| `GET /markets` | All `MarketCreated` markets |
-| `GET /markets/token/:address` | Lookup by insured token CA + policies + oracle snapshot |
-| `GET /keeper/targets` | `{ poolRefs, vaultAddresses }` for keeper sync |
-| `GET /graphql` | Auto GraphQL from schema |
-| `GET /ready` | `503` until backfill done |
+| `GET /markets` | Every `MarketCreated` row |
+| `GET /markets/token/:address` | One token: vault, policies, oracle, cells |
+| `GET /policies/buyer/:address` | Policies bought by a wallet |
+| `GET /lp/:address` | LP shares and USDG notionals |
+| `GET /activity/wallet/:address` | Purchases, deposits, settle, challenge, release |
+| `GET /keeper/targets` | `{ poolRefs, vaultAddresses }` for the keeper |
+| `GET /graphql` | Schema GraphQL |
+| `GET /ready` | `503` until backfill finishes |
 
-## Schema
+`/keeper/targets` is each insured `poolRef`, plus pools seen in `PriceObserver.Recorded`, plus optional `KEEPER_EXTRA_POOL_REFS`.
 
-- **market** — one row per `createMarket` (token, vault, `poolRef`, deployer metadata)
-- **policy** — vault policy lifecycle from `InsuranceVault` events
-- **oracle_pool** — latest `PriceObserver.Recorded` per `poolRef`
+## What it stores
 
-Vault contracts are discovered via Ponder **factory** pattern on `MarketCreated.vault`.
+- **market** — one row per `createMarket`
+- **policy** — vault policy lifecycle
+- **activity** — wallet feed
+- **lp position** and **vault cell** — deposits behind a drop
+- **oracle pool** — latest `PriceObserver.Recorded` per pool
 
-## VPS (production)
+Vaults are picked up from `MarketCreated`. A new factory needs the new address and start block. This process does not upgrade old rows in place.
 
-1. **`DATABASE_SCHEMA`** — required for `ponder start` (e.g. `paraape`; max 45 chars). Set in `.env` or pass `--schema`.
-2. **Postgres** — set `DATABASE_URL` (recommended for `ponder start`).
-2. **systemd** — `WorkingDirectory=…/apps/indexer`, `EnvironmentFile=.env`, `ExecStart=pnpm start`.
-3. **Keeper** — `KEEPER_INDEXER_URL=http://127.0.0.1:42069` and `KEEPER_INDEXER_WAIT_READY=1` (see [keeper README](../keeper/README.md#indexer-sync-recommended-on-vps)).
+## Production
+
+1. Set `DATABASE_SCHEMA` (max 45 characters) and `DATABASE_URL`.
+2. Run `pnpm start` with the working directory at `apps/indexer`.
+3. Point the keeper at `KEEPER_INDEXER_URL=http://127.0.0.1:42069` and `KEEPER_INDEXER_WAIT_READY=1`.
 
 ## Scripts
 
-| Command | Description |
+| Command | |
 | --- | --- |
-| `pnpm dev` | Dev sync + hot reload |
-| `pnpm start` | Production server |
-| `pnpm codegen` | Regenerate ponder types |
-
-See [keeper vs Ponder](../keeper/README.md#keeper-vs-ponder-indexer).
+| `pnpm dev` | Sync and reload |
+| `pnpm start` | Production. Requires `DATABASE_SCHEMA` |
+| `pnpm codegen` | Regenerate Ponder types |

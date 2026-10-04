@@ -23,10 +23,27 @@ contract RiskEngineTest is Test {
         assertApproxEqRel(d85, 61_270e6, 0.02e18);
     }
 
-    function test_BoundedRiskEngineClampsMinPremium() public {
-        BoundedRiskEngine bounded = new BoundedRiskEngine(engine, 10e6, 5000);
+    function test_BoundedRiskEngineClampsMaxPremium() public {
+        BoundedRiskEngine bounded = new BoundedRiskEngine(engine, 5000);
         uint256 p = bounded.quotePremium(bytes32(0), 1e10, 9500, 5 minutes, 1 days, 100e6, 0);
-        assertEq(p, 10e6);
+        assertLe(p, 50e6);
+        assertGt(p, 1e6);
+    }
+
+    function test_FlashRugPremiumScalesWithCoverage() public view {
+        uint256 sigma = 7e13;
+        uint256 small = engine.quotePremium(bytes32(0), sigma, 9000, 5 minutes, 3 days, 100e6, 0);
+        uint256 large = engine.quotePremium(bytes32(0), sigma, 9000, 5 minutes, 3 days, 838e6, 0);
+        assertGt(large, small);
+        assertGt(large, 10e6);
+        assertLt(large, 838e6 / 2);
+    }
+
+    function test_StricterFlashTriggerHigherRate() public view {
+        uint256 sigma = 7e13;
+        uint256 p90 = engine.quotePremium(bytes32(0), sigma, 9000, 5 minutes, 7 days, 5_000e6, 0);
+        uint256 p50 = engine.quotePremium(bytes32(0), sigma, 5000, 5 minutes, 7 days, 5_000e6, 0);
+        assertGt(p90, p50);
     }
 
     function test_ConcentratedMatchesQuoteDelta() public view {

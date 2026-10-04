@@ -19,8 +19,7 @@ export function SiteFooter() {
                 Pack a parachute.
               </h2>
               <p className="mono-caps max-w-[38ch]">
-                Isolated rug-pull protection for Robinhood Chain memecoins. Priced from Uniswap V4
-                TWAP, settled in USDG.
+                Stay in the coin. If it rugs the way you called it, you get paid in USDG.
               </p>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Link href="/protect" className="btn btn-inverse">
@@ -56,8 +55,8 @@ export function SiteFooter() {
               <span className="display text-3xl">Paraape</span>
             </div>
             <p className="mono-caps max-w-[60ch] md:text-right">
-              Protection is not a guarantee of profit. Trigger thresholds are illustrative and not
-              yet calibrated against historical data.
+              Not a promise of profit. The crash sizes here are examples until they are set from
+              real rugs.
             </p>
           </div>
         </div>

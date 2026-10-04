@@ -2,23 +2,22 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowDownLeft, ArrowUpRight, Coins, Parachute, Wallet } from "@phosphor-icons/react";
-import { Stat } from "@/components/app/ui";
+import { Parachute, Wallet } from "@phosphor-icons/react";
+import { InfoPopover, Stat } from "@/components/app/ui";
 import { useWallet } from "@/components/wallet";
+import { ActivityFeed } from "@/components/dashboard/activity-feed";
+import { PolicyActions } from "@/components/dashboard/policy-actions";
+import { WithdrawLpButton } from "@/components/dashboard/withdraw-lp-button";
+import { fetchLpPositions, fetchMarkets, fetchPoliciesForBuyer } from "@/lib/indexer";
+import { durationDays, severityPct } from "@/lib/grid";
 import {
-  ACTIVITY,
-  MIN_POOL_TVL,
-  POLICIES,
-  POSITIONS,
-  TOKENS,
-  availableCapacity,
   num,
   shortAddress,
   usd,
-  type ActivityItem,
-  type Policy,
 } from "@/lib/protocol";
+import { formatUnits } from "viem";
 
 const TABS = [
   { id: "policies", label: "Policies" },
@@ -32,6 +31,16 @@ export function DashboardView() {
   const { address, connect, status } = useWallet();
   const [tab, setTab] = useState<TabId>("policies");
   const reduce = useReducedMotion();
+  const policiesQuery = useQuery({
+    queryKey: ["policies", address],
+    queryFn: () => fetchPoliciesForBuyer(address!),
+    enabled: !!address,
+  });
+  const lpQuery = useQuery({
+    queryKey: ["lp-positions", address],
+    queryFn: () => fetchLpPositions(address!),
+    enabled: !!address,
+  });
 
   if (!address) {
     return (
@@ -40,7 +49,7 @@ export function DashboardView() {
         <div className="flex flex-col gap-2">
           <h2 className="text-2xl">Connect a wallet to see your activity</h2>
           <p className="max-w-[52ch] leading-relaxed text-fg-muted">
-            Policies and LP positions are read from the connected address.
+            Policies and deposits are read from the connected address.
           </p>
         </div>
         <button
@@ -56,10 +65,23 @@ export function DashboardView() {
     );
   }
 
-  const activeCover = POLICIES.filter((p) => p.status === "active").reduce((s, p) => s + p.coverage, 0);
-  const premiumsPaid = POLICIES.reduce((s, p) => s + p.premium, 0);
-  const deposited = POSITIONS.reduce((s, p) => s + p.deposited, 0);
-  const earned = POSITIONS.reduce((s, p) => s + p.earned, 0);
+  const policies = policiesQuery.data?.policies ?? [];
+  const lpPositions = lpQuery.data?.positions ?? [];
+  const activeCover = policies
+    .filter((p) => p.status === "Active")
+    .reduce((s, p) => s + Number(formatUnits(BigInt(p.coverageUsdg), 6)), 0);
+  const premiumsPaid = policies.reduce(
+    (s, p) => s + Number(formatUnits(BigInt(p.premiumUsdg), 6)),
+    0,
+  );
+  const deposited = lpPositions.reduce(
+    (s, p) => s + Number(formatUnits(BigInt(p.depositedUsdg), 6)),
+    0,
+  );
+  const lockedLp = lpPositions.reduce(
+    (s, p) => s + Number(formatUnits(BigInt(p.lockedUsdg), 6)),
+    0,
+  );
 
   return (
     <div className="flex flex-col gap-12 pt-10">
@@ -67,9 +89,7 @@ export function DashboardView() {
         <Stat label="Active cover">{num(activeCover)} USDG</Stat>
         <Stat label="Premiums paid">{num(premiumsPaid, 2)} USDG</Stat>
         <Stat label="Underwritten">{num(deposited)} USDG</Stat>
-        <Stat label="LP earnings" tone="signal">
-          +{num(earned, 2)} USDG
-        </Stat>
+        <Stat label="Locked in cells">{num(lockedLp)} USDG</Stat>
       </div>
 
       <div className="grid grid-cols-1 gap-12 xl:grid-cols-[1fr_320px]">
@@ -118,22 +138,32 @@ export function DashboardView() {
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               className="overflow-x-auto pt-2"
             >
-              {tab === "policies" && <PoliciesTable />}
-              {tab === "positions" && <PositionsTable />}
+              {tab === "policies" && (
+                <PoliciesTable loading={policiesQuery.isLoading} policies={policies} />
+              )}
+              {tab === "positions" && (
+                <PositionsTable loading={lpQuery.isLoading} positions={lpPositions} />
+              )}
               {tab === "markets" && <MarketsTable />}
             </motion.div>
           </AnimatePresence>
         </div>
 
-        <aside aria-labelledby="activity-title">
-          <h2 id="activity-title" className="border-b border-line pb-3 pt-3 text-sm uppercase tracking-wide">
-            Recent activity
-          </h2>
-          <ul className="flex flex-col">
-            {ACTIVITY.map((a) => (
-              <ActivityRow key={a.id} item={a} />
-            ))}
-          </ul>
+        <aside aria-labelledby="activity-title" className="text-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-line pb-3 pt-3">
+            <h2 id="activity-title" className="text-sm uppercase tracking-wide text-fg">
+              Activity
+            </h2>
+            <InfoPopover label="How deposits earn" align="end" placement="above">
+              <p>
+                Premiums accrue into your deposit while policies run. USDG you can withdraw is on the
+                Positions tab.
+              </p>
+            </InfoPopover>
+          </div>
+          <div className="pt-4">
+            <ActivityFeed address={address} />
+          </div>
         </aside>
       </div>
     </div>
@@ -143,7 +173,27 @@ export function DashboardView() {
 const th = "py-4 pr-6 text-left text-xs font-normal uppercase tracking-[0.08em] text-fg-muted";
 const td = "py-5 pr-6 tabular-nums";
 
-function PoliciesTable() {
+function PoliciesTable({
+  policies,
+  loading,
+}: {
+  policies: Awaited<ReturnType<typeof fetchPoliciesForBuyer>>["policies"];
+  loading: boolean;
+}) {
+  if (loading) {
+    return <p className="py-8 text-sm text-fg-muted">Loading policies from indexer…</p>;
+  }
+  if (policies.length === 0) {
+    return (
+      <p className="py-8 text-sm text-fg-muted">
+        No policies for this wallet yet.{" "}
+        <Link href="/protect" className="underline underline-offset-4">
+          Buy cover
+        </Link>
+      </p>
+    );
+  }
+
   return (
     <table className="w-full min-w-[680px] text-sm">
       <thead>
@@ -152,96 +202,105 @@ function PoliciesTable() {
           <th className={th}>Trigger</th>
           <th className={th}>Payout</th>
           <th className={th}>Premium</th>
-          <th className={th}>Expires</th>
           <th className={th}>Status</th>
+          <th className={th}>Actions</th>
         </tr>
       </thead>
       <tbody>
-        {POLICIES.map((p) => (
-          <tr key={p.id} className="border-b border-line last:border-b-0">
-            <td className={td}>${p.token}</td>
-            <td className={td}>
-              -{p.severity}% / {p.windowMin} min
-            </td>
-            <td className={td}>{num(p.coverage)} USDG</td>
-            <td className={td}>{num(p.premium, 2)} USDG</td>
-            <td className={td}>{p.status === "active" ? `in ${p.expiresInDays} days` : "-"}</td>
-            <td className={td}>
-              <StatusBadge status={p.status} />
-            </td>
-          </tr>
-        ))}
+        {policies.map((p) => {
+          const coverage = Number(formatUnits(BigInt(p.coverageUsdg), 6));
+          const premium = Number(formatUnits(BigInt(p.premiumUsdg), 6));
+          const sev = severityPct(p.severityIdx);
+          const dur =
+            p.durationIdx != null ? durationDays(p.durationIdx) : null;
+          return (
+            <tr key={p.id} className="border-b border-line last:border-b-0">
+              <td className={td}>{shortAddress(p.token)}</td>
+              <td className={td}>
+                -{sev}%{dur != null ? ` / ${dur}d` : ""}
+              </td>
+              <td className={td}>{num(coverage)} USDG</td>
+              <td className={td}>{num(premium, 2)} USDG</td>
+              <td className={td}>
+                <IndexerPolicyBadge status={p.status} />
+              </td>
+              <td className={td}>
+                <PolicyActions policy={p} />
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
 }
 
-function StatusBadge({ status }: { status: Policy["status"] }) {
-  const styles = {
-    active: "border-signal bg-signal text-fg",
-    paid: "border-safe text-safe",
-    expired: "border-line-strong text-fg-muted",
-  } as const;
-  const label = { active: "Active", paid: "Paid out", expired: "Expired" } as const;
+function IndexerPolicyBadge({ status }: { status: string }) {
+  const normalized = status.toLowerCase();
+  const styles =
+    normalized === "active"
+      ? "border-signal bg-signal text-fg"
+      : normalized === "paid"
+        ? "border-safe text-safe"
+        : "border-line-strong text-fg-muted";
   return (
-    <span className={`inline-block border px-2 py-1 text-xs uppercase tracking-wide ${styles[status]}`}>
-      {label[status]}
+    <span className={`inline-block border px-2 py-1 text-xs uppercase tracking-wide ${styles}`}>
+      {status}
     </span>
   );
 }
 
-function PositionsTable() {
-  const [pending, setPending] = useState<string | null>(null);
-  const [withdrawn, setWithdrawn] = useState<Record<string, boolean>>({});
-
-  const withdraw = (id: string) => {
-    setPending(id);
-    window.setTimeout(() => {
-      setWithdrawn((w) => ({ ...w, [id]: true }));
-      setPending(null);
-    }, 1200);
-  };
+function PositionsTable({
+  positions,
+  loading,
+}: {
+  positions: Awaited<ReturnType<typeof fetchLpPositions>>["positions"];
+  loading: boolean;
+}) {
+  if (loading) {
+    return <p className="py-8 text-sm text-fg-muted">Loading LP positions from indexer…</p>;
+  }
+  if (positions.length === 0) {
+    return (
+      <p className="py-8 text-sm text-fg-muted">
+        No deposits for this wallet yet.{" "}
+        <Link href="/underwrite" className="underline underline-offset-4">
+          Underwrite a market
+        </Link>
+      </p>
+    );
+  }
 
   return (
     <table className="w-full min-w-[760px] text-sm">
       <thead>
         <tr className="border-b border-line">
-          <th className={th}>Market</th>
+          <th className={th}>Token</th>
           <th className={th}>Trigger</th>
           <th className={th}>Deposited</th>
           <th className={th}>Locked</th>
-          <th className={th}>Earned</th>
-          <th className={th}>APY</th>
-          <th className={th}>
-            <span className="sr-only">Actions</span>
-          </th>
+          <th className={th}>Free</th>
+          <th className={th}>Shares</th>
+          <th className={th}>Actions</th>
         </tr>
       </thead>
       <tbody>
-        {POSITIONS.map((p) => {
-          const free = p.deposited - p.locked;
-          const done = withdrawn[p.id];
+        {positions.map((p) => {
+          const deposited = Number(formatUnits(BigInt(p.depositedUsdg), 6));
+          const locked = Number(formatUnits(BigInt(p.lockedUsdg), 6));
+          const free = Number(formatUnits(BigInt(p.freeUsdg), 6));
+          const sev =
+            p.severityIdx != null ? severityPct(p.severityIdx) : "—";
           return (
             <tr key={p.id} className="border-b border-line last:border-b-0">
-              <td className={td}>${p.token}</td>
+              <td className={td}>{shortAddress(p.token)}</td>
+              <td className={td}>{typeof sev === "number" ? `-${sev}%` : sev}</td>
+              <td className={td}>{num(deposited)} USDG</td>
+              <td className={td}>{num(locked)} USDG</td>
+              <td className={td}>{num(free)} USDG</td>
+              <td className={`${td} font-mono text-xs`}>{p.shares}</td>
               <td className={td}>
-                -{p.severity}% / {p.windowMin} min
-              </td>
-              <td className={td}>{num(p.deposited)}</td>
-              <td className={td}>{num(p.locked)}</td>
-              <td className={`${td} text-safe`}>+{num(p.earned, 2)}</td>
-              <td className={td}>{p.apy.toFixed(1)}%</td>
-              <td className="py-3 text-right">
-                <button
-                  type="button"
-                  onClick={() => withdraw(p.id)}
-                  disabled={done || pending === p.id}
-                  aria-busy={pending === p.id}
-                  aria-label={`Withdraw ${num(free)} free USDG from ${p.token}`}
-                  className="btn btn-ghost h-9 px-3 text-xs"
-                >
-                  {done ? "Withdrawn" : pending === p.id ? "Withdrawing" : `Withdraw ${num(free)}`}
-                </button>
+                <WithdrawLpButton position={p} />
               </td>
             </tr>
           );
@@ -252,88 +311,54 @@ function PositionsTable() {
 }
 
 function MarketsTable() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["markets"],
+    queryFn: fetchMarkets,
+  });
+
+  if (isLoading) {
+    return <p className="py-8 text-sm text-fg-muted">Loading markets from indexer…</p>;
+  }
+  if (isError || !data?.markets.length) {
+    return (
+      <p className="py-8 text-sm text-fg-muted">
+        No markets yet.
+      </p>
+    );
+  }
+
   return (
     <table className="w-full min-w-[820px] text-sm">
       <thead>
         <tr className="border-b border-line">
           <th className={th}>Token</th>
-          <th className={th}>Volatility</th>
-          <th className={th}>Pool liquidity</th>
-          <th className={th}>Vault TVL</th>
-          <th className={th}>Open capacity</th>
+          <th className={th}>Vault</th>
+          <th className={th}>Pool ref</th>
           <th className={th}>
             <span className="sr-only">Actions</span>
           </th>
         </tr>
       </thead>
       <tbody>
-        {TOKENS.map((t) => {
-          const insurable = t.poolTvl >= MIN_POOL_TVL;
-          return (
-            <tr key={t.symbol} className="border-b border-line last:border-b-0">
-              <td className={td}>
-                ${t.symbol}
-                <span className="block text-xs text-fg-muted">{shortAddress(t.address)}</span>
-              </td>
-              <td className={td}>{Math.round(t.volatility * 100)}%</td>
-              <td className={`${td} ${insurable ? "" : "text-danger"}`}>
-                {usd(t.poolTvl)}
-                {!insurable && <span className="block text-xs">Below floor</span>}
-              </td>
-              <td className={td}>{t.vaultTvl ? usd(t.vaultTvl) : "-"}</td>
-              <td className={td}>{t.vaultTvl ? usd(availableCapacity(t)) : "-"}</td>
-              <td className="py-3 text-right">
-                {insurable ? (
-                  <div className="flex justify-end gap-2">
-                    <Link href="/protect" className="btn btn-ghost h-9 px-3 text-xs">
-                      Protect
-                    </Link>
-                    <Link href={`/underwrite?token=${t.address}`} className="btn btn-ghost h-9 px-3 text-xs">
-                      Underwrite
-                    </Link>
-                  </div>
-                ) : (
-                  <span className="text-xs text-fg-muted">Not insurable</span>
-                )}
-              </td>
-            </tr>
-          );
-        })}
+        {data.markets.map((m) => (
+          <tr key={m.token} className="border-b border-line last:border-b-0">
+            <td className={td}>{shortAddress(m.token)}</td>
+            <td className={td}>{shortAddress(m.vault)}</td>
+            <td className={`${td} font-mono text-xs`}>{shortAddress(m.poolRef)}</td>
+            <td className="py-3 text-right">
+              <div className="flex justify-end gap-2">
+                <Link href={`/protect?token=${m.token}`} className="btn btn-ghost h-9 px-3 text-xs">
+                  Protect
+                </Link>
+                <Link href={`/underwrite?token=${m.token}`} className="btn btn-ghost h-9 px-3 text-xs">
+                  Underwrite
+                </Link>
+              </div>
+            </td>
+          </tr>
+        ))}
       </tbody>
     </table>
   );
 }
 
-function ActivityRow({ item }: { item: ActivityItem }) {
-  const meta = {
-    premium: { icon: Coins, text: "Premium earned", sign: "+" },
-    payout: { icon: Parachute, text: "Payout received", sign: "+" },
-    deposit: { icon: ArrowDownLeft, text: "Deposited", sign: "" },
-    withdraw: { icon: ArrowUpRight, text: "Withdrew", sign: "" },
-  }[item.kind];
-  const Icon = meta.icon;
-  const ago =
-    item.minutesAgo < 60
-      ? `${item.minutesAgo}m ago`
-      : item.minutesAgo < 1440
-        ? `${Math.floor(item.minutesAgo / 60)}h ago`
-        : `${Math.floor(item.minutesAgo / 1440)}d ago`;
-
-  return (
-    <li className="flex items-center gap-4 border-b border-line py-4 last:border-b-0">
-      <span className="grid size-9 shrink-0 place-items-center border border-line-strong">
-        <Icon size={16} aria-hidden className={item.kind === "payout" ? "text-signal" : ""} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm">
-          {meta.text} <span className="text-fg-muted">${item.token}</span>
-        </p>
-        <p className="text-xs text-fg-muted">{ago}</p>
-      </div>
-      <span className={`text-sm tabular-nums ${meta.sign ? "text-safe" : ""}`}>
-        {meta.sign}
-        {num(item.amount, item.amount < 100 ? 2 : 0)}
-      </span>
-    </li>
-  );
-}

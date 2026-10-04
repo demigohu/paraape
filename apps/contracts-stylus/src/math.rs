@@ -110,14 +110,61 @@ pub fn p_drawdown(sigma_sec_wad: U256, severity_bps: u16, window_sec: u32) -> U2
     min(p, wad())
 }
 
-/// 30 bps × (remain/5000) × √(w / 5m)
+/// Memecoin jump floor (PRD §10 v2): BASE 0.8% × (1 + s) × √(5m / w), floor on window factor.
+const BASE_JUMP_WAD: u64 = 80_000_000_000_000; // 80e14
+
 pub fn jump_floor(severity_bps: u16, window_sec: u32) -> U256 {
-    let remain = U256::from((10_000u16 - severity_bps) as u64);
-    let mut time_5m = sqrt_wad(U256::from(window_sec as u64) * wad() / U256::from(300u64));
-    if time_5m.is_zero() {
-        time_5m = U256::from(1u64);
+    let s_wad = U256::from(severity_bps as u64) * wad() / U256::from(10_000u64);
+    let severity_factor = wad() + s_wad;
+    let mut window_factor = w_div(
+        wad(),
+        sqrt_wad(U256::from(window_sec as u64) * wad() / U256::from(300u64)),
+    );
+    let floor = wad() / U256::from(10u64);
+    if window_factor < floor {
+        window_factor = floor;
     }
-    U256::from(3_000_000_000_000_000u64) * remain / U256::from(5_000u64) * time_5m / wad()
+    w_mul(
+        U256::from(BASE_JUMP_WAD),
+        w_mul(severity_factor, window_factor),
+    )
+}
+
+/// P(≥1 hit in duration) ≈ 1 − (1−p)^k
+pub fn union_hit_rate_wad(p_wad: U256, duration_sec: u32, window_sec: u32) -> U256 {
+    if p_wad.is_zero() {
+        return U256::ZERO;
+    }
+    if p_wad >= wad() {
+        return wad();
+    }
+    if window_sec == 0 || duration_sec <= window_sec {
+        return p_wad;
+    }
+    let mut k = (U256::from(duration_sec as u64) + U256::from(window_sec as u64) - U256::from(1u64))
+        / U256::from(window_sec as u64);
+    if k > U256::from(4096u64) {
+        k = U256::from(4096u64);
+    }
+    let survive = wad_pow(wad() - p_wad, k.as_limbs()[0] as u64);
+    wad() - survive
+}
+
+fn wad_pow(base_wad: U256, exp: u64) -> U256 {
+    if exp == 0 {
+        return wad();
+    }
+    let mut result = wad();
+    let mut base = base_wad;
+    let mut e = exp;
+    while e > 0 {
+        if e & 1 == 1 {
+            result = w_mul(result, base);
+        }
+        base = w_mul(base, base);
+        e >>= 1;
+    }
+    result
 }
 
 pub fn utilization_multiplier(u_wad: U256) -> U256 {
@@ -142,8 +189,7 @@ pub fn quote_premium(
 ) -> U256 {
     let p = p_drawdown(sigma_1e18, severity_bps, window_sec);
     let jump = jump_floor(severity_bps, window_sec);
-    let n_windows = U256::from(duration_sec as u64) * wad() / U256::from(window_sec as u64);
-    let union_bound = min(wad(), w_mul(p, n_windows));
+    let union_bound = union_hit_rate_wad(p, duration_sec, window_sec);
     let mut rate = max(jump, union_bound);
     let load = wad() + U256::from(LOAD_WAD) + cell_utilization_1e18 / U256::from(2u64);
     rate = w_mul(rate, load);
@@ -158,8 +204,8 @@ pub fn quote_premium(
 pub fn estimate_apy(severity_bps: u16, window_sec: u32, utilization_1e18: U256, sigma_1e18: U256) -> U256 {
     let p = p_drawdown(sigma_1e18, severity_bps, window_sec);
     let jump = jump_floor(severity_bps, window_sec);
-    let n_year = U256::from(365u64 * 86400) * wad() / U256::from(window_sec as u64);
-    let mut rate_year = min(wad(), max(jump, w_mul(p, n_year)));
+    let union_year = union_hit_rate_wad(p, 365 * 86400, window_sec);
+    let mut rate_year = max(jump, union_year);
     rate_year = w_mul(rate_year, wad() + U256::from(LOAD_WAD) + utilization_1e18 / U256::from(2u64));
     rate_year = w_mul(rate_year, utilization_multiplier(utilization_1e18));
     rate_year * U256::from(10_000u64) / wad()
@@ -306,11 +352,11 @@ mod tests {
     }
 
     #[test]
-    fn stricter_trigger_cheaper() {
+    fn stricter_flash_trigger_higher_premium() {
         let sigma = U256::from(70_000_000_000_000u64);
         let p90 = quote_premium(sigma, 9000, 300, 7 * 86400, U256::from(5_000u64) * U256::from(1_000_000u64), U256::ZERO);
         let p50 = quote_premium(sigma, 5000, 300, 7 * 86400, U256::from(5_000u64) * U256::from(1_000_000u64), U256::ZERO);
-        assert!(p90 < p50);
+        assert!(p90 > p50);
         assert!(p50 < U256::from(2_500u64) * U256::from(1_000_000u64));
     }
 
@@ -325,10 +371,10 @@ mod tests {
     }
 
     #[test]
-    fn jump_floor_stricter_cheaper() {
+    fn jump_floor_stricter_higher() {
         let j50 = jump_floor(5000, 300);
         let j90 = jump_floor(9000, 300);
-        assert!(j90 < j50);
+        assert!(j90 > j50);
     }
 
     #[test]

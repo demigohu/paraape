@@ -21,4 +21,5 @@ codegen-units = 1
 strip = true
 lto = true
 panic = "abort"
-opt-level = "s"
+# "z" = size (Arbitrum Stylus troubleshooting); target ≤24 KB compressed → single fragment when possible
+opt-level = "z"

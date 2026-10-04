@@ -9,7 +9,7 @@ export default function DashboardPage() {
     <div className="mx-auto max-w-[1400px] px-4 py-12 md:px-8 md:py-16">
       <PageIntro
         title="Dashboard"
-        body="Your policies, your underwriting positions and every market you can enter, in one place."
+        body="Cover you bought, USDG you deposited, and markets you can open."
       />
       <DashboardView />
     </div>

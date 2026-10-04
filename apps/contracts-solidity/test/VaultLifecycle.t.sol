@@ -5,52 +5,44 @@ import {ParaapeFixture} from "./helpers/ParaapeFixture.sol";
 import {InsuranceVault} from "../src/InsuranceVault.sol";
 import {ProtocolConfigLib} from "../src/ProtocolConfig.sol";
 import {Pricing} from "../src/libraries/Pricing.sol";
-import {TriggerLib} from "../src/libraries/TriggerLib.sol";
 import {OracleLib} from "../src/libraries/OracleLib.sol";
 
 contract VaultLifecycleTest is ParaapeFixture {
     uint8 constant SEV_90 = 4;
-    uint8 constant WIN_5M = 0;
     uint8 constant DUR_7D = 2;
 
     function _buy() internal returns (uint256 id) {
         usdg.mint(buyer, 20_000e6);
         vm.startPrank(buyer);
         usdg.approve(vaultAddr, type(uint256).max);
-        id = InsuranceVault(vaultAddr).purchasePolicy(SEV_90, WIN_5M, DUR_7D, 5_000e6, 5_000e6);
+        id = InsuranceVault(vaultAddr).purchasePolicy(SEV_90, DUR_7D, 5_000e6, 5_000e6);
         vm.stopPrank();
     }
 
-    function _waitActiveAndMarkT0() internal returns (uint256 t0) {
-        uint32 L = TriggerLib.measurementTwapLength(WIN_5M);
-        uint256 activeFrom = block.timestamp + ProtocolConfigLib.defaults().activationDelay;
-        while (block.timestamp < activeFrom + L) {
+    function _waitActive() internal {
+        // Loop on `clock`. via_ir treats `block.timestamp` as invariant inside a call, so a
+        // while condition on it never sees vm.warp.
+        uint256 activeFrom = clock + ProtocolConfigLib.defaults().activationDelay;
+        while (clock < activeFrom) {
             _record(0);
         }
-        t0 = block.timestamp;
     }
 
-    function _crashAndPersist(uint256 t0) internal returns (uint256 t1) {
+    /// @dev Hold the crash longer than the 5-minute claim TWAP, with K samples still down.
+    function _crashAndPersist() internal {
         tickSource.setTick(POOL, -27_348);
-        _record(-27_348);
-        _record(-27_348);
-        _record(-27_348);
-        _record(-27_348);
-        _record(-27_348);
-        t1 = block.timestamp;
-        require(t1 > t0 && t1 - t0 <= 5 minutes, "test timeline");
-        _record(-27_348);
-        _record(-27_348);
-        _record(-27_348);
+        for (uint256 i; i < 15; i++) {
+            _record(-27_348);
+        }
     }
 
     function test_SettleThenReleasePaysBuyer() public {
         uint256 id = _buy();
-        uint256 t0 = _waitActiveAndMarkT0();
-        uint256 t1 = _crashAndPersist(t0);
+        _waitActive();
+        _crashAndPersist();
 
         InsuranceVault vault = InsuranceVault(vaultAddr);
-        vault.settle(id, t0, t1);
+        vault.settle(id);
         InsuranceVault.Policy memory pending = vault.getPolicy(id);
         assertEq(uint256(pending.status), uint256(InsuranceVault.PolicyStatus.PendingPayout));
         assertGt(pending.pendingPayout, 0);
@@ -64,25 +56,51 @@ contract VaultLifecycleTest is ParaapeFixture {
         assertEq(usdg.balanceOf(buyer), buyerBefore + pending.pendingPayout);
     }
 
-    function test_ChallengeUpheldReturnsBondAndVoids() public {
+    function test_ChallengeVoidsWhenDropRecovers() public {
         uint256 id = _buy();
-        uint256 t0 = _waitActiveAndMarkT0();
-        uint256 t1 = _crashAndPersist(t0);
+        _waitActive();
+        _crashAndPersist();
         InsuranceVault vault = InsuranceVault(vaultAddr);
-        vault.settle(id, t0, t1);
+        vault.settle(id);
 
-        address challenger = makeAddr("challenger");
-        usdg.mint(challenger, 500e6);
-        vm.startPrank(challenger);
-        usdg.approve(vaultAddr, type(uint256).max);
+        for (uint256 i; i < 15; i++) {
+            _record(0);
+        }
+
+        uint256 lpBefore = usdg.balanceOf(lp);
+        vm.prank(lp);
         vault.challenge(id);
-        vm.stopPrank();
-
-        uint256 chalBefore = usdg.balanceOf(challenger);
-        vm.prank(guardian);
-        vault.resolveChallengeUpheld(id);
         assertEq(uint256(vault.getPolicy(id).status), uint256(InsuranceVault.PolicyStatus.Void));
-        assertGt(usdg.balanceOf(challenger), chalBefore);
+        assertEq(usdg.balanceOf(lp), lpBefore);
+    }
+
+    function test_ChallengeStillDownChargesSpamFee() public {
+        uint256 id = _buy();
+        _waitActive();
+        _crashAndPersist();
+        InsuranceVault vault = InsuranceVault(vaultAddr);
+        vault.settle(id);
+
+        uint256 lpBefore = usdg.balanceOf(lp);
+        uint256 feesBefore = vault.protocolFeesAccrued();
+        vm.prank(lp);
+        vault.challenge(id);
+
+        assertEq(uint256(vault.getPolicy(id).status), uint256(InsuranceVault.PolicyStatus.PendingPayout));
+        assertEq(usdg.balanceOf(lp), lpBefore - ProtocolConfigLib.defaults().challengeSpamFeeUsdg);
+        assertEq(vault.protocolFeesAccrued(), feesBefore + ProtocolConfigLib.defaults().challengeSpamFeeUsdg);
+    }
+
+    function test_BuyerCannotChallenge() public {
+        uint256 id = _buy();
+        _waitActive();
+        _crashAndPersist();
+        InsuranceVault vault = InsuranceVault(vaultAddr);
+        vault.settle(id);
+
+        vm.prank(buyer);
+        vm.expectRevert("InsuranceVault: buyer");
+        vault.challenge(id);
     }
 
     function test_InsiderCannotBuy() public {
@@ -93,7 +111,7 @@ contract VaultLifecycleTest is ParaapeFixture {
         vm.startPrank(buyer);
         usdg.approve(vault, type(uint256).max);
         vm.expectRevert("InsuranceVault: insider");
-        InsuranceVault(vault).purchasePolicy(SEV_90, WIN_5M, DUR_7D, 5_000e6, 5_000e6);
+        InsuranceVault(vault).purchasePolicy(SEV_90, DUR_7D, 5_000e6, 5_000e6);
         vm.stopPrank();
     }
 
@@ -103,7 +121,7 @@ contract VaultLifecycleTest is ParaapeFixture {
         vm.startPrank(buyer);
         usdg.approve(vaultAddr, type(uint256).max);
         vm.expectRevert("InsuranceVault: concentration");
-        InsuranceVault(vaultAddr).purchasePolicy(SEV_90, WIN_5M, DUR_7D, 5_000e6, 5_000e6);
+        InsuranceVault(vaultAddr).purchasePolicy(SEV_90, DUR_7D, 5_000e6, 5_000e6);
         vm.stopPrank();
     }
 
@@ -114,7 +132,7 @@ contract VaultLifecycleTest is ParaapeFixture {
         vm.startPrank(poor);
         usdg.approve(vaultAddr, type(uint256).max);
         vm.expectRevert("InsuranceVault: over-insurance");
-        InsuranceVault(vaultAddr).purchasePolicy(SEV_90, WIN_5M, DUR_7D, 5_000e6, 1);
+        InsuranceVault(vaultAddr).purchasePolicy(SEV_90, DUR_7D, 5_000e6, 1);
         vm.stopPrank();
     }
 
@@ -127,7 +145,7 @@ contract VaultLifecycleTest is ParaapeFixture {
         vm.startPrank(buyer);
         usdg.approve(vaultAddr, type(uint256).max);
         vm.expectRevert("InsuranceVault: entry guard");
-        InsuranceVault(vaultAddr).purchasePolicy(SEV_90, WIN_5M, DUR_7D, 5_000e6, 5_000e6);
+        InsuranceVault(vaultAddr).purchasePolicy(SEV_90, DUR_7D, 5_000e6, 5_000e6);
         vm.stopPrank();
     }
 
@@ -135,7 +153,7 @@ contract VaultLifecycleTest is ParaapeFixture {
         _buy();
         vm.startPrank(lp);
         vm.expectRevert("InsuranceVault: locked");
-        InsuranceVault(vaultAddr).withdraw(SEV_90, WIN_5M, 50_000e6);
+        InsuranceVault(vaultAddr).withdraw(SEV_90, 50_000e6);
         vm.stopPrank();
     }
 

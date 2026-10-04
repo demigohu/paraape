@@ -40,7 +40,6 @@ contract InsuranceVault {
     struct Policy {
         address buyer;
         uint8 severityIdx;
-        uint8 windowIdx;
         uint8 durationIdx;
         uint256 coverageUsdg;
         uint256 premiumUsdg;
@@ -97,12 +96,12 @@ contract InsuranceVault {
         uint256 indexed policyId,
         address indexed buyer,
         uint8 severityIdx,
-        uint8 windowIdx,
+        uint8 durationIdx,
         uint256 coverageUsdg,
         uint256 premiumUsdg
     );
     event PolicySettled(uint256 indexed policyId, uint256 payout, uint256 challengeDeadline);
-    event PolicyChallenged(uint256 indexed policyId, address indexed challenger, uint256 bond);
+    event ChallengeRejected(uint256 indexed policyId, address indexed challenger, uint256 fee);
     event PolicyReleased(uint256 indexed policyId, uint256 payout);
     event PolicyVoided(uint256 indexed policyId);
     event PolicyExpired(uint256 indexed policyId);
@@ -142,10 +141,10 @@ contract InsuranceVault {
         _liquidityState = state;
     }
 
-    function deposit(uint8 severityIdx, uint8 windowIdx, uint256 assets) external returns (uint256 shares) {
-        GridLib.validateCell(severityIdx, windowIdx);
+    function deposit(uint8 severityIdx, uint256 assets) external returns (uint256 shares) {
+        GridLib.validateCell(severityIdx);
         _recordPool(true);
-        bytes32 key = GridLib.cellKey(severityIdx, windowIdx);
+        bytes32 key = GridLib.cellKey(severityIdx);
         RiskCell storage cell = cells[key];
         if (cell.totalShares == 0) {
             shares = assets;
@@ -160,8 +159,8 @@ contract InsuranceVault {
         emit CellDeposit(msg.sender, key, assets, shares);
     }
 
-    function withdraw(uint8 severityIdx, uint8 windowIdx, uint256 shares) external returns (uint256 assets) {
-        bytes32 key = GridLib.cellKey(severityIdx, windowIdx);
+    function withdraw(uint8 severityIdx, uint256 shares) external returns (uint256 assets) {
+        bytes32 key = GridLib.cellKey(severityIdx);
         RiskCell storage cell = cells[key];
         require(shares > 0 && lpShares[key][msg.sender] >= shares, "InsuranceVault: shares");
         _recordPool(true);
@@ -177,12 +176,11 @@ contract InsuranceVault {
 
     function purchasePolicy(
         uint8 severityIdx,
-        uint8 windowIdx,
         uint8 durationIdx,
         uint256 coverageUsdg,
         uint256 minCoverageUsdg
     ) external returns (uint256 policyId) {
-        GridLib.validatePolicy(severityIdx, windowIdx, durationIdx);
+        GridLib.validatePolicy(severityIdx, durationIdx);
         require(coverageUsdg >= minCoverageUsdg && coverageUsdg > 0, "InsuranceVault: coverage");
         _recordPool(true);
         _assertBuyerEligible(msg.sender);
@@ -196,8 +194,7 @@ contract InsuranceVault {
         _assertPayoutCaps(severityIdx, coverageUsdg);
 
         uint256 sigma = riskEngine.realizedVol(observer.exportTickPayload(poolRef));
-        (uint256 premium, uint256 filled) =
-            _fillPolicy(severityIdx, windowIdx, durationIdx, coverageUsdg, sigma);
+        (uint256 premium, uint256 filled) = _fillPolicy(severityIdx, durationIdx, coverageUsdg, sigma);
         require(filled >= minCoverageUsdg, "InsuranceVault: minCoverage");
 
         uint256 fee = premium * config.protocolFeeBps / 10_000;
@@ -209,7 +206,6 @@ contract InsuranceVault {
         policies[policyId] = Policy({
             buyer: msg.sender,
             severityIdx: severityIdx,
-            windowIdx: windowIdx,
             durationIdx: durationIdx,
             coverageUsdg: filled,
             premiumUsdg: premium,
@@ -230,10 +226,11 @@ contract InsuranceVault {
         activePolicyCount++;
 
         usdg.safeTransferFrom(msg.sender, address(this), premium);
-        emit PolicyPurchased(policyId, msg.sender, severityIdx, windowIdx, filled, premium);
+        emit PolicyPurchased(policyId, msg.sender, severityIdx, durationIdx, filled, premium);
     }
 
-    function settle(uint256 policyId, uint256 t0, uint256 t1) external {
+    /// @notice Pays if the 5-minute TWAP is down `severity` from the entry TWAP at `activeFrom`.
+    function settle(uint256 policyId) external {
         Policy storage p = policies[policyId];
         require(p.status == PolicyStatus.Active, "InsuranceVault: status");
         require(block.timestamp <= p.expiry, "InsuranceVault: expired");
@@ -241,21 +238,20 @@ contract InsuranceVault {
         _syncPremium(policyId, p);
         _recordPool(true);
 
-        uint32 windowSec = GridLib.windowSeconds(p.windowIdx);
-        require(TriggerLib.withinWindow(t0, t1, windowSec), "InsuranceVault: window");
-        uint32 twapLen = TriggerLib.measurementTwapLength(p.windowIdx);
-        require(t0 >= p.activeFrom + twapLen, "InsuranceVault: t0");
-        require(t1 <= p.expiry, "InsuranceVault: t1");
-
-        int24 tick0 = _twapTickAt(t0, twapLen);
-        int24 tick1 = _twapTickAt(t1, twapLen);
+        uint32 twapLen = TriggerLib.ENTRY_TWAP;
+        require(p.activeFrom >= twapLen, "InsuranceVault: entry history");
+        int24 entryTick = _twapTickAt(p.activeFrom, twapLen);
+        int24 nowTick = _twapTickAt(block.timestamp, twapLen);
         uint16 severityBps = GridLib.severityBps(p.severityIdx);
-        require(Pricing.meetsSeverityDrop(tick0, tick1, severityBps, tokenIsCurrency0), "InsuranceVault: trigger");
-        _assertPersistence(uint32(t1), tick0, twapLen, severityBps);
+        require(
+            Pricing.meetsSeverityDrop(entryTick, nowTick, severityBps, tokenIsCurrency0),
+            "InsuranceVault: trigger"
+        );
+        _assertStillDown(p.activeFrom, entryTick, twapLen, severityBps);
 
         require(insuredToken.balanceOf(p.buyer) >= p.coveredTokens, "InsuranceVault: holding");
 
-        uint256 payout = _computePayout(p, tick0, tick1);
+        uint256 payout = _computePayout(p, entryTick, nowTick);
         require(payout > 0, "InsuranceVault: payout");
 
         p.pendingPayout = payout;
@@ -264,41 +260,29 @@ contract InsuranceVault {
         emit PolicySettled(policyId, payout, p.challengeDeadline);
     }
 
+    /// @notice An LP rechecks the settle conditions. The buyer cannot call this.
+    ///         If the drop, persistence, or holding no longer holds, the policy is voided
+    ///         and the reserved capital returns to the cells. If they still hold, the
+    ///         payout stays pending and the caller pays `challengeSpamFeeUsdg`.
     function challenge(uint256 policyId) external {
         Policy storage p = policies[policyId];
         require(p.status == PolicyStatus.PendingPayout, "InsuranceVault: status");
         require(block.timestamp <= p.challengeDeadline, "InsuranceVault: challenge window");
-        usdg.safeTransferFrom(msg.sender, address(this), config.challengeBondUsdg);
-        p.challenger = msg.sender;
-        p.challengeBond = config.challengeBondUsdg;
-        p.status = PolicyStatus.Challenged;
-        emit PolicyChallenged(policyId, msg.sender, config.challengeBondUsdg);
-    }
+        require(msg.sender != p.buyer, "InsuranceVault: buyer");
+        require(_isBackingLp(policyId, msg.sender), "InsuranceVault: lp");
 
-    function resolveChallengeUpheld(uint256 policyId) external onlyGuardian {
-        Policy storage p = policies[policyId];
-        require(p.status == PolicyStatus.Challenged, "InsuranceVault: status");
-        _syncPremiumAll(policyId, p);
-        p.status = PolicyStatus.Void;
-        activePolicyCount--;
-        _decrementCoverageBuckets(p.severityIdx, p.coverageUsdg);
-        _releasePayoutLock(policyId);
-        uint256 reward = p.challengeBond;
-        if (protocolFeesAccrued >= config.recordBountyUsdg) {
-            protocolFeesAccrued -= config.recordBountyUsdg;
-            reward += config.recordBountyUsdg;
+        _recordPool(false);
+        if (_triggerStillHolds(p)) {
+            uint256 fee = config.challengeSpamFeeUsdg;
+            if (fee > 0) {
+                usdg.safeTransferFrom(msg.sender, address(this), fee);
+                protocolFeesAccrued += fee;
+            }
+            emit ChallengeRejected(policyId, msg.sender, fee);
+            return;
         }
-        usdg.safeTransfer(p.challenger, reward);
-        emit PolicyVoided(policyId);
-    }
 
-    function resolveChallengeRejected(uint256 policyId) external onlyGuardian {
-        Policy storage p = policies[policyId];
-        require(p.status == PolicyStatus.Challenged, "InsuranceVault: status");
-        p.status = PolicyStatus.PendingPayout;
-        usdg.safeTransfer(p.buyer, p.challengeBond);
-        p.challenger = address(0);
-        p.challengeBond = 0;
+        _voidPending(policyId, p);
     }
 
     function release(uint256 policyId) external {
@@ -429,39 +413,30 @@ contract InsuranceVault {
         }
     }
 
-    function _fillPolicy(
-        uint8 severityIdx,
-        uint8 windowIdx,
-        uint8 durationIdx,
-        uint256 coverageUsdg,
-        uint256 sigma
-    ) internal returns (uint256 premium, uint256 filled) {
+    function _fillPolicy(uint8 severityIdx, uint8 durationIdx, uint256 coverageUsdg, uint256 sigma)
+        internal
+        returns (uint256 premium, uint256 filled)
+    {
         uint256 remaining = coverageUsdg;
+        uint32 durationSec = GridLib.durationSeconds(durationIdx);
         for (uint8 s = GridLib.SEVERITY_COUNT; s > 0 && remaining > 0; s--) {
             uint8 sev = s - 1;
-            for (uint8 w = 0; w < GridLib.WINDOW_COUNT && remaining > 0; w++) {
-                if (!GridLib.cellBacksPolicy(sev, w, severityIdx, windowIdx)) continue;
-                bytes32 key = GridLib.cellKey(sev, w);
-                RiskCell storage cell = cells[key];
-                uint256 free = cell.totalAssets - cell.lockedAssets;
-                if (free == 0) continue;
-                uint256 take = remaining < free ? remaining : free;
-                uint256 util = cell.totalAssets == 0 ? 0 : cell.lockedAssets * 1e18 / cell.totalAssets;
-                premium += riskEngine.quotePremium(
-                    poolRef,
-                    sigma,
-                    GridLib.severityBps(severityIdx),
-                    GridLib.windowSeconds(windowIdx),
-                    GridLib.durationSeconds(durationIdx),
-                    take,
-                    util
-                );
-                filled += take;
-                remaining -= take;
-                policyCells[nextPolicyId].push(key);
-                policyCellAmounts[nextPolicyId].push(take);
-                cell.lockedAssets += take;
-            }
+            if (!GridLib.cellBacksPolicy(sev, severityIdx)) continue;
+            bytes32 key = GridLib.cellKey(sev);
+            RiskCell storage cell = cells[key];
+            uint256 free = cell.totalAssets - cell.lockedAssets;
+            if (free == 0) continue;
+            uint256 take = remaining < free ? remaining : free;
+            uint256 util = cell.totalAssets == 0 ? 0 : cell.lockedAssets * 1e18 / cell.totalAssets;
+            // One horizon: duration is both the drawdown window and the policy term (k = 1).
+            premium += riskEngine.quotePremium(
+                poolRef, sigma, GridLib.severityBps(severityIdx), durationSec, durationSec, take, util
+            );
+            filled += take;
+            remaining -= take;
+            policyCells[nextPolicyId].push(key);
+            policyCellAmounts[nextPolicyId].push(take);
+            cell.lockedAssets += take;
         }
         require(filled > 0, "InsuranceVault: no liquidity");
         premium = _boundPremium(premium, filled);
@@ -469,7 +444,9 @@ contract InsuranceVault {
 
     function _boundPremium(uint256 premium, uint256 coverage) internal view returns (uint256) {
         uint256 maxPrem = coverage * config.maxPremiumBps / 10_000;
-        if (premium < config.minPremiumUsdg) premium = config.minPremiumUsdg;
+        uint256 minFromBps = coverage * config.minPremiumBps / 10_000;
+        uint256 minPrem = config.minPremiumUsdg > minFromBps ? config.minPremiumUsdg : minFromBps;
+        if (premium < minPrem) premium = minPrem;
         if (premium > maxPrem) premium = maxPrem;
         return premium;
     }
@@ -524,18 +501,56 @@ contract InsuranceVault {
         return OracleLib.twapTick(cum[1], cum[0], twapLen);
     }
 
-    function _assertPersistence(uint32 t1, int24 tick0, uint32 twapLen, uint16 severityBps) internal view {
-        (uint32[] memory times, int24[] memory ticks, uint32[] memory blocks, uint8 count) =
-            observer.observationsAfter(poolRef, t1, config.persistenceK);
-        require(count >= config.persistenceK, "InsuranceVault: persistence");
+    /// @dev The last K recordings, each after activation, are still down vs the entry tick.
+    function _assertStillDown(uint256 activeFrom, int24 entryTick, uint32 twapLen, uint16 severityBps) internal view {
+        require(_stillDown(activeFrom, entryTick, twapLen, severityBps), "InsuranceVault: persistence");
+    }
+
+    function _triggerStillHolds(Policy storage p) internal view returns (bool) {
+        if (block.timestamp > p.expiry) return false;
+        if (insuredToken.balanceOf(p.buyer) < p.coveredTokens) return false;
+        uint32 twapLen = TriggerLib.ENTRY_TWAP;
+        if (p.activeFrom < twapLen) return false;
+        int24 entryTick = _twapTickAt(p.activeFrom, twapLen);
+        int24 nowTick = _twapTickAt(block.timestamp, twapLen);
+        uint16 severityBps = GridLib.severityBps(p.severityIdx);
+        if (!Pricing.meetsSeverityDrop(entryTick, nowTick, severityBps, tokenIsCurrency0)) return false;
+        return _stillDown(p.activeFrom, entryTick, twapLen, severityBps);
+    }
+
+    function _stillDown(uint256 activeFrom, int24 entryTick, uint32 twapLen, uint16 severityBps)
+        internal
+        view
+        returns (bool)
+    {
+        (uint32[] memory times,, uint32[] memory blocks, uint8 count) =
+            observer.latestObservations(poolRef, config.persistenceK);
+        if (count < config.persistenceK) return false;
         for (uint8 i = 0; i < config.persistenceK; i++) {
-            require(i == 0 || blocks[i] != blocks[i - 1], "InsuranceVault: block");
+            if (times[i] < activeFrom) return false;
+            if (i != 0 && blocks[i] == blocks[i - 1]) return false;
             int24 tick = _twapTickAt(times[i], twapLen);
-            require(
-                Pricing.meetsSeverityDrop(tick0, tick, severityBps, tokenIsCurrency0),
-                "InsuranceVault: persistence"
-            );
+            if (!Pricing.meetsSeverityDrop(entryTick, tick, severityBps, tokenIsCurrency0)) return false;
         }
+        return true;
+    }
+
+    function _isBackingLp(uint256 policyId, address account) internal view returns (bool) {
+        bytes32[] storage keys = policyCells[policyId];
+        for (uint256 i = 0; i < keys.length; i++) {
+            if (lpShares[keys[i]][account] > 0) return true;
+        }
+        return false;
+    }
+
+    function _voidPending(uint256 policyId, Policy storage p) internal {
+        _syncPremiumAll(policyId, p);
+        p.status = PolicyStatus.Void;
+        p.pendingPayout = 0;
+        activePolicyCount--;
+        _decrementCoverageBuckets(p.severityIdx, p.coverageUsdg);
+        _releasePayoutLock(policyId);
+        emit PolicyVoided(policyId);
     }
 
     function _computePayout(Policy storage p, int24 tick0, int24 tick1) internal view returns (uint256) {

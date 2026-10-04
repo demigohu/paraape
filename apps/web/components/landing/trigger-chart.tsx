@@ -23,9 +23,9 @@ const LINE = POINTS.map(([x, p], i) => `${i ? "L" : "M"}${sx(x).toFixed(1)},${sy
 const TRIGGER_LEVEL = 110 * 0.15;
 
 const STEPS = [
-  { title: "Pump-and-dump", body: "-52% over three hours. Steep but slow, so the pool never pays." },
-  { title: "Severity + speed", body: "-88% inside 8 minutes. Payout needs both: 85% down, within 10 minutes." },
-  { title: "TWAP confirms", body: "Read from the token's own V4 pool. A keeper settles, USDG arrives." },
+  { title: "The line", body: "Set when your cover turns on. A pump after that does not move it." },
+  { title: "The crash", body: "Fall that far and stay under it, any time before it expires, and it can pay." },
+  { title: "The payout", body: "Priced from that coin's own pool. USDG goes to your wallet." },
 ];
 
 export function TriggerChart() {
@@ -121,12 +121,14 @@ export function TriggerChart() {
         <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-8 px-4 py-16 md:px-8">
           <div className="flex flex-col gap-4 md:max-w-[62%]">
             <h2 id="trigger-title" className="sr-only">
-              Only rugs trigger. Normal dumps don&apos;t.
+              Not every red candle pays. The crash you named does.
             </h2>
             <p aria-hidden data-trigger-title className="display text-[clamp(3rem,8vw,8rem)]">
               Trigger
             </p>
-            <p className="mono-caps text-on-inverse-muted">Only rugs trigger. Normal dumps don&apos;t.</p>
+            <p className="mono-caps text-on-inverse-muted">
+              Not every red candle. The crash you named, if it sticks.
+            </p>
           </div>
 
           <figure className="relative md:max-w-[62%]">
@@ -134,7 +136,7 @@ export function TriggerChart() {
               viewBox={`0 0 ${W} ${H}`}
               className="h-auto max-h-[46dvh] w-full overflow-visible"
               role="img"
-              aria-label="Sample price chart. A 52% drop over three hours does not trigger. An 88% drop inside eight minutes triggers a payout."
+              aria-label="Sample price chart. A 52% dip is just a dip. An 88% crash that stays under the line pays."
             >
               {[40, 80, 120].map((p) => (
                 <line key={p} x1={sx(0)} x2={sx(100)} y1={sy(p)} y2={sy(p)} stroke="rgb(219 219 218 / 0.12)" />
@@ -145,14 +147,14 @@ export function TriggerChart() {
                 <line x1={sx(36)} x2={sx(36)} y1={sy(68)} y2={sy(142) - 14} strokeDasharray="3 4" />
                 <line x1={sx(21)} x2={sx(36)} y1={sy(142) - 14} y2={sy(142) - 14} />
                 <text x={sx(21)} y={sy(142) - 24} fontSize={16} stroke="none">
-                  -52% / 3H. NOT COVERED
+                  −52%. JUST A DIP
                 </text>
               </g>
 
               <g data-annot="level">
                 <line x1={sx(0)} x2={sx(100)} y1={sy(TRIGGER_LEVEL)} y2={sy(TRIGGER_LEVEL)} stroke="var(--color-signal)" strokeDasharray="6 6" />
                 <text x={sx(0)} y={sy(TRIGGER_LEVEL) - 10} fill="var(--color-signal)" fontSize={16}>
-                  TRIGGER LEVEL: -85%
+                  THE LINE: −85%
                 </text>
               </g>
 
@@ -166,7 +168,7 @@ export function TriggerChart() {
                   opacity={0.28}
                 />
                 <text x={sx(80) + 12} y={sy(110)} fill="var(--color-signal)" fontSize={16}>
-                  -88% / 8 MIN
+                  −88%. THIS PAYS
                 </text>
               </g>
 

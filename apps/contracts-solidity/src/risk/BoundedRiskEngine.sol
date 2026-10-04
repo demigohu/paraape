@@ -6,12 +6,10 @@ import {IRiskEngine} from "../interfaces/IRiskEngine.sol";
 /// @dev Wraps Stylus (or remote) engine; enforces PRD §10 Solidity bounds
 contract BoundedRiskEngine is IRiskEngine {
     IRiskEngine public immutable impl;
-    uint256 public immutable minPremiumUsdg;
     uint256 public immutable maxPremiumBps;
 
-    constructor(IRiskEngine _impl, uint256 _minPremiumUsdg, uint256 _maxPremiumBps) {
+    constructor(IRiskEngine _impl, uint256 _maxPremiumBps) {
         impl = _impl;
-        minPremiumUsdg = _minPremiumUsdg;
         maxPremiumBps = _maxPremiumBps;
     }
 
@@ -32,7 +30,6 @@ contract BoundedRiskEngine is IRiskEngine {
             poolRef, sigma1e18, severityBps, windowSec, durationSec, coverageUsdg, cellUtilization1e18
         );
         uint256 maxPrem = coverageUsdg * maxPremiumBps / 10_000;
-        if (premiumUsdg < minPremiumUsdg) premiumUsdg = minPremiumUsdg;
         if (premiumUsdg > maxPrem) premiumUsdg = maxPrem;
     }
 

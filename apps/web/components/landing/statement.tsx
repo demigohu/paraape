@@ -51,8 +51,8 @@ export function Statement() {
           Paraape pays you after it.
         </p>
         <p data-statement-note className="mono-caps max-w-[44ch]">
-          Existing tools detect and warn. None of them compensate a trader who gets rugged anyway.
-          Paraape is payout insurance, isolated per token and settled on-chain.
+          Alerts leave you holding the bag. This pays it. One coin, its own USDG, when the crash
+          you named is real.
         </p>
       </div>
     </section>

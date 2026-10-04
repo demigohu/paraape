@@ -10,7 +10,7 @@ export default function UnderwritePage() {
     <div className="mx-auto max-w-[1400px] px-4 py-12 md:px-8 md:py-16">
       <PageIntro
         title="Underwrite"
-        body="Deposit USDG into one token's isolated vault. You choose how deep and how fast a crash must be before your capital pays out."
+        body="Back one token with USDG. Pick the drop you will pay. A milder tier can also cover a deeper policy."
       />
       <Suspense>
         <UnderwriteForm />

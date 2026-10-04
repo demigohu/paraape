@@ -1,8 +1,101 @@
 "use client";
 
-import { useEffect, useId } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion, useSpring, useTransform } from "motion/react";
 import { Info, WarningCircle } from "@phosphor-icons/react";
+
+function panelLeft(
+  box: { left: number; right: number },
+  align: "start" | "end",
+): number {
+  const width = Math.min(352, window.innerWidth - 16);
+  const preferred = align === "end" ? box.right - width : box.left;
+  return Math.max(8, Math.min(preferred, window.innerWidth - width - 8));
+}
+
+export function InfoPopover({
+  label = "More info",
+  children,
+  align = "start",
+  placement = "below",
+}: {
+  label?: string;
+  children: ReactNode;
+  /** Use `end` in narrow right-side panels so the panel opens leftward. */
+  align?: "start" | "end";
+  /** Prefer `above` in checkout sidebars so copy stays over the card, not below it. */
+  placement?: "above" | "below";
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
+  const [box, setBox] = useState<{ top: number; left: number; right: number; bottom: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const node = buttonRef.current;
+      if (!node) return;
+      const r = node.getBoundingClientRect();
+      setBox({ top: r.top, left: r.left, right: r.right, bottom: r.bottom });
+    };
+    place();
+    const onPointerDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-flex shrink-0">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={label}
+        onClick={() => setOpen((v) => !v)}
+        className="grid size-7 place-items-center border border-line-strong text-fg-muted transition-colors hover:border-fg hover:text-fg"
+      >
+        <Info size={14} weight="bold" aria-hidden />
+      </button>
+      {open && box && (
+        <div
+          id={panelId}
+          role="dialog"
+          aria-label={label}
+          className="fixed z-50 w-[min(22rem,calc(100vw-2rem))] border border-line-strong bg-surface p-4 text-sm leading-relaxed text-fg-muted shadow-[0_8px_24px_rgba(0,0,0,0.08)]"
+          style={
+            placement === "above"
+              ? {
+                  bottom: Math.max(8, window.innerHeight - box.top + 8),
+                  left: panelLeft(box, align),
+                }
+              : {
+                  top: box.bottom + 8,
+                  left: panelLeft(box, align),
+                }
+          }
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function PageIntro({ title, body }: { title: string; body: string }) {
   const reduce = useReducedMotion();
@@ -65,9 +158,12 @@ export function RangeField({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-4">
-        <label htmlFor={id} className="label">
-          {label}
-        </label>
+        <div className="flex items-center gap-2">
+          <label htmlFor={id} className="label">
+            {label}
+          </label>
+          {hint ? <InfoPopover label={`About ${label}`}>{hint}</InfoPopover> : null}
+        </div>
         <output htmlFor={id} className="text-2xl tabular-nums">
           {value}
           <span className="ml-1 text-sm text-fg-muted">{unit}</span>
@@ -89,9 +185,7 @@ export function RangeField({
         <span>{minLabel}</span>
         <span>{maxLabel}</span>
       </div>
-      <p id={`${id}-hint`} className="text-sm leading-relaxed text-fg-muted">
-        {hint}
-      </p>
+      {hint ? <span id={`${id}-hint`} className="sr-only">{hint}</span> : null}
     </div>
   );
 }
@@ -136,15 +230,20 @@ export function Section({
   title,
   children,
   aside,
+  info,
 }: {
   title: string;
   children: React.ReactNode;
   aside?: React.ReactNode;
+  info?: ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-6 border-b border-line py-10 last:border-b-0">
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-xl">{title}</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl">{title}</h2>
+          {info ? <InfoPopover label={`About ${title}`}>{info}</InfoPopover> : null}
+        </div>
         {aside}
       </div>
       {children}

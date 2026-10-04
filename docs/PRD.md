@@ -22,11 +22,12 @@ Existing tools (RugCheck, Veritas Protocol, Elliptic, ScanHood, GeckoTerminal Ru
 
 ## 2. Positioning
 
-Paraape insures against **rug events**, not against a token trading below the buyer's entry price.
+Paraape insures a held bag against a drop of at least **−X% from the price when the policy turns on**, any time before it expires.
 
-- A policy pays when the token suffers a crash that is both **deep** (severity) and **fast** (window), measured from the price just before the crash.
-- It is not a put option or a stop-loss. A token that bleeds slowly, or that ends below the buyer's entry after a normal pump-and-dump, does not pay.
-- The payout never exceeds the loss the buyer actually suffered in the rug event (Section 7).
+- The buyer picks the depth (−50% … −95%) and how long the policy stays on (1–30 days). They do not pick a crash window.
+- A slow bleed to −X% pays the same as a fast dump, as long as the drop is still there when someone settles. A wick that recovers does not pay.
+- The reference is a 5-minute TWAP at activation, not a spot print and not a later local high. A pump after purchase does not raise the entry.
+- The payout never exceeds the loss from that entry, and never exceeds the coverage purchased (Section 7).
 
 ---
 
@@ -43,12 +44,12 @@ Paraape insures against **rug events**, not against a token trading below the bu
 
 Each decision exists because a simpler version was considered and broke.
 
-### 4.1 Trigger: severity + window, measured from the pre-crash price
+### 4.1 Trigger: −X% from the entry TWAP, any time before expiry
 
-- **Rejected:** "price drops X% in 24h" — fires on normal memecoin pump-and-dump cycles and drains LPs in days.
+- **Rejected:** "price drops X% inside a 5-minute window" — buyers cannot tell whether a rug will finish inside five minutes, and a slow bleed to −90% pays nothing.
 - **Rejected:** "malicious on-chain event detected" — duplicates free scanners and is easy to evade.
-- **Rejected:** "price falls X% below the buyer's purchase price" — this is a put option, not rug insurance, and it misses the most common rug shape (pump first, then dump).
-- **Chosen:** a policy triggers when the price falls by at least the **severity** within at most the **window**, measured from the highest price inside that window. Formal definition in Section 6.
+- **Rejected:** a raw spot print at purchase — one swap can mark the entry.
+- **Chosen:** the policy pays when the 5-minute TWAP is at least `s` below the 5-minute TWAP that ended at `activeFrom`, the buyer still holds the bag, and the last K observations are still that far down. Formal definition in Section 6.
 
 ### 4.2 Price source: Paraape's own sampled TWAP, behind a price-source adapter
 
@@ -71,36 +72,34 @@ Details in Section 9.
 - Every token has its **own isolated market**. A rug on Token A never touches LPs underwriting Token B.
 - Market creation is permissionless (Section 9.4).
 
-### 4.4 LP risk cells on a fixed grid (DLMM-style)
+### 4.4 LP risk cells (severity tiers)
 
-- LPs choose their own **severity** and **window**, like choosing a bin in a DLMM. The parameters are not fixed tiers.
-- Choices are restricted to fixed grid points (Section 5), like tick spacing in Uniswap. This keeps liquidity concentrated so buyers can find capacity, keeps quotes comparable, and lets keepers check triggers per cell instead of per position.
-- All LPs who choose the same grid point share one **risk cell**: a USDG pool with share-based (ERC-4626-style) accounting.
-- An LP's `(severity, window)` is their **maximum risk appetite**: "I agree to pay for any crash at least this deep and at most this fast."
+- LPs choose one **severity** tier: "I pay if price is down at least this much from the buyer's entry." There is no crash-speed window.
+- Choices are the fixed severity points in Section 5, so liquidity stays in a few pools buyers can actually fill.
+- All LPs on the same severity share one **risk cell**: a USDG pool with share-based (ERC-4626-style) accounting.
+- The buyer's **duration** (how long the policy stays on) is not an LP axis. It only sets expiry and the premium.
 
-### 4.5 Matching and aggregation: dominance rule, best-fit fill
+### 4.5 Matching: milder tiers can back stricter policies
 
-A risk cell may back a policy only if the policy's trigger is **equally strict or stricter** than the cell's appetite:
+A cell may back a policy only if the policy needs a drop **at least as deep** as the cell agreed to pay:
 
 ```
-cell can back policy  <=>  policy.severity >= cell.severity  AND  policy.window <= cell.window
+cell can back policy  <=>  policy.severity >= cell.severity
 ```
 
-Whenever such a policy pays, the cell's own condition is also met, so an LP never pays for a crash they did not agree to cover.
+A −90% policy pays less often than a −50% policy, so −50% liquidity can back it. −90% liquidity cannot back a −50% policy, because that LP did not agree to pay on a smaller drop.
 
-- A policy may be filled from **several eligible cells** (aggregation). Cells that are not eligible are never used, even if the buyer's request cannot otherwise be filled.
-- Fill order is **best-fit**: eligible cells with the highest severity are used first, then the shortest window. LPs with a wide appetite stay available for buyers who need wide protection.
+- A policy may be filled from **several eligible cells**. Fill order is strictest cell first, so wide-appetite LPs stay available for milder policies.
 - The buyer sets a `minCoverage`. If eligible cells cannot supply at least that much, the purchase reverts.
-- Stricter triggers are cheaper. Buyers trade off breadth of protection against price.
+- Deeper triggers are cheaper. Buyers trade off how far price must fall against the premium.
 
-Example with cell A = 85%/10m and cell B = 70%/30m:
+Example with cell A = −90% and cell B = −70%:
 
 | Buyer request | A eligible | B eligible | Result |
 | --- | --- | --- | --- |
-| 90% / 10m | Yes | Yes | Filled from A, then B |
-| 80% / 15m | No | Yes | Filled from B |
-| 60% / 10m | No | No | No coverage |
-| 90% / 1h | No | No | No coverage |
+| −90% | Yes | Yes | Filled from A, then B |
+| −80% | No | Yes | Filled from B |
+| −60% | No | No | No coverage |
 
 ### 4.6 Full collateralization
 
@@ -124,25 +123,11 @@ All premiums, deposits, and payouts are denominated in Paxos USDG (6 decimals). 
 
 ### 5.1 Severity levels
 
-`{50, 60, 70, 80, 90, 95}%`. The maximum is 95%, because a TWAP almost never reaches exactly zero and a 100% trigger would never pay.
+`{50, 60, 70, 80, 90, 95}%` below the entry TWAP. The maximum is 95%, because a TWAP almost never reaches exactly zero and a 100% trigger would never pay. LPs deposit into one of these tiers. Buyers buy one of them.
 
-### 5.2 Window levels
+### 5.2 Policy duration
 
-`{5m, 15m, 30m, 1h, 4h, 12h, 1d, 3d, 7d, 30d}`. Spacing widens with length, so the grid covers minutes to a month with only 10 points.
-
-### 5.3 Minimum severity per window
-
-Long windows require deeper crashes, so a long-window policy still describes a rug and not a slow decline. This applies to both cells and policies.
-
-| Window | Minimum severity |
-| --- | --- |
-| ≤ 1h | 50% |
-| > 1h and ≤ 1d | 70% |
-| > 1d | 85% |
-
-### 5.4 Policy duration
-
-`{1d, 3d, 7d, 14d, 30d}`. A policy's window must not exceed its duration.
+`{1d, 3d, 7d, 14d, 30d}`. Duration is how long the policy stays on. It is not a crash window. It sets `expiry` and the premium horizon. It does not slice LP cells.
 
 ---
 
@@ -150,21 +135,22 @@ Long windows require deeper crashes, so a long-window policy still describes a r
 
 Let:
 
-- `s` = policy severity, `w` = policy window.
-- `L` = measurement TWAP length = `clamp(w / 5, 1 minute, 30 minutes)`.
-- `P(t)` = TWAP over `[t - L, t]` from the market's price source, in quote-asset terms.
-- `activeFrom` = purchase time + activation delay.
+- `s` = policy severity.
+- `L` = 5 minutes.
+- `P(t)` = TWAP over `[t − L, t]` from the market's price source, in quote-asset terms.
+- `activeFrom` = purchase time + activation delay (30 minutes).
+- `entry` = `activeFrom`. The activation delay is longer than `L`, so the entry TWAP is already recorded when the policy turns on.
 
-A policy is **triggered** if there exist timestamps `t0 < t1` such that:
+A policy is **triggered** when someone calls `settle(policyId)` and all of the following hold:
 
-1. `activeFrom <= t0 - L` and `t1 <= expiry`
-2. `t1 - t0 <= w`
-3. `P(t1) <= (1 - s) × P(t0)`
-4. **Persistence:** the condition in (3) still holds at the next `K` recorded observations after `t1`, each in a different block.
+1. `activeFrom <= block.timestamp <= expiry`
+2. `P(now) <= (1 − s) × P(entry)`
+3. The buyer still holds at least the token amount recorded at purchase.
+4. **Persistence:** the same drop vs `P(entry)` still holds on the 5-minute TWAP at each of the last `K` observations, each in a different block, each at or after `activeFrom`.
 
-The caller of `settle` supplies `t0` and `t1`; the contract verifies them against recorded observations and never searches history itself.
+The caller does not pass timestamps. The contract reads the entry TWAP and the current TWAP. It does not settle itself; the keeper (or the buyer) sends the transaction.
 
-**Example.** Policy 85% / 10m. The buyer entered at 1.0. The token pumps to 3.0, is at 3.0 at 14:00, and falls to 0.4 at 14:08. That is -87% in 8 minutes, so the policy triggers, even though the drop from the entry price is only -60%.
+**Example.** Policy −90%, 7 days. Entry TWAP is 1.0. On day 6 the 5-minute TWAP is 0.09 and the last three recordings are still there. The policy pays. A print at 0.09 that recovers to 0.5 before those three recordings does not.
 
 ---
 
@@ -173,19 +159,19 @@ The caller of `settle` supplies `t0` and `t1`; the contract verifies them agains
 ### 7.1 Coverage cap at purchase (no over-insurance)
 
 ```
-C <= V × s
+C <= min(V × s, free LP in eligible cells, depth cap)
 ```
 
-- `C` = coverage purchased (USDG).
-- `V` = USDG value of the buyer's holdings at purchase = balance × `P(now)` × quote-to-USDG rate.
+- `C` = coverage purchased (USDG). Default is that whole cap. The buyer may take less, down to `minCoverage`.
+- `V` = USDG value of the buyer's holdings at purchase = balance × spot TWAP × quote-to-USDG rate.
 
 ### 7.2 Payout at settlement (indemnity cap)
 
 ```
-payout = min(C, balance × (P(t0) - P(t1)) × quoteToUsdg)
+payout = min(C, coveredTokens × (P(entry) − P(now)) × quoteToUsdg)
 ```
 
-The payout never exceeds the loss suffered in the rug event itself.
+`coveredTokens` is the balance recorded at purchase, and settlement still requires the buyer to hold at least that much. The payout never exceeds `C` and never exceeds the loss from the entry TWAP.
 
 ### 7.3 Quote-asset conversion
 
@@ -213,7 +199,7 @@ Each market stores its quote asset and the immutable price source used for conve
 
 ### 7.4 Payout timing
 
-A proven trigger moves the payout to **pending** for the challenge period (Section 8, layer 6). If it is not challenged, the payout is released automatically. The buyer never files a claim.
+A proven trigger moves the payout to **pending** for the challenge period (Section 8, layer 6). The price check is already finished inside `settle`. During the window an LP may recheck those same conditions on-chain. If nobody does, or every recheck still passes, `release` pays the buyer. The buyer never files a claim and cannot challenge their own payout.
 
 ---
 
@@ -228,7 +214,7 @@ Perfect self-dealing prevention is impossible on-chain, because one person can c
 | 3 | Known-insider exclusion | The token deployer and the launchpad creator address (for example, from Pons `TokenLaunched`) are recorded at market creation and cannot buy coverage. | The creator insuring their own rug |
 | 4 | Activation delay and entry guard | Policies activate after a delay. Purchases revert if the price has already fallen more than `G`% over the last hour. | Buying protection after a crash has already started |
 | 5 | Payout cap vs pool depth | Total coverage per severity level is capped by the pool's locked depth (Section 8.1). | Manipulation that costs less than it pays |
-| 6 | Challenge period | Pending payouts can be challenged with evidence that the buyer is linked to the dumping wallets, for example bundled wallets funded from a common source or bought in the same block at launch. Challengers post a bond. MVP resolution is by a guardian multisig. | Sybil and bundled-wallet self-dealing that splits holdings to avoid layers 1–3 |
+| 6 | Challenge period | After `settle`, the payout stays pending for 2 hours. An LP who backs the policy may call `challenge(policyId)`. The vault recomputes the claim TWAP, the persistence samples, and the holding check. If any of those no longer holds, the policy is voided in that transaction and the reserved capital returns to the cells. If all three still hold, the payout stays pending and the caller pays `challengeSpamFeeUsdg` (default 10 USDG) to the protocol. The buyer cannot call `challenge`. The guardian does not decide the price. | A trigger that was true at `settle` but is no longer true (price recovered, or the buyer sold the covered bag) |
 | 7 | Oracle hardening | Tick movement per observation is capped, triggers compare TWAPs rather than spot prices, and the persistence rule requires the price to stay down across blocks. | Single-transaction price manipulation |
 
 ### 8.1 Payout cap formula
@@ -274,7 +260,7 @@ Liquidity that can be withdrawn does not count toward `D(s)`. Otherwise an insid
 - `record` is permissionless and rate-limited by a minimum interval per pool.
 - Each new tick is clamped to at most `MAX_TICK_MOVE` from the previous observation, the truncated-oracle technique.
 - `observe(poolId, secondsAgos)` returns cumulative ticks with the same semantics as Uniswap V3, so V3 and V4 adapters are interchangeable.
-- Buffer capacity must cover the longest active window plus `L` at the configured recording interval.
+- Buffer capacity must cover the 5-minute entry and claim TWAPs plus `K` persistence samples at the configured recording interval.
 - The implementation reuses an audited oracle library (for example, OpenZeppelin's Uniswap hooks oracle libraries). It is not written from scratch.
 
 This is a **sampled** TWAP: prices between two recordings are assumed constant. It is less precise than the V3 oracle, which records inside every block that has a swap.
@@ -292,9 +278,9 @@ A missing recording during a rug can make a legitimate trigger unprovable. That 
 3. Paraape runs a keeper bot, and the keeper code is open source.
 4. The buyer's frontend records while it is open, and buyers can call `settle` themselves.
 
-The recording interval adapts to the shortest active window in each market: for example, every 30s when a 5-minute policy is active, and every few minutes when the shortest active window is a day.
+The keeper records on the minimum interval (30 seconds) while a market has active policies, so the 5-minute TWAP and the last K samples exist when someone settles.
 
-The keeper is not a trusted role. Anyone can record and anyone can settle.
+The keeper is not a trusted role. Anyone can record and anyone can call `settle(policyId)`. The contract does not settle on its own.
 
 ### 9.4 Market creation and pool binding
 
@@ -325,29 +311,38 @@ Robinhood Chain documents onchain [Chainlink price feeds](https://docs.chain.lin
 
 ---
 
-## 10. Risk Engine (Stylus)
+## 10. Risk Engine
 
-The Stylus contract is pure computation. It holds no funds and has no admin power over them.
+The risk engine is pure computation. It holds no funds and has no admin power over them. On Robinhood testnet the live engine is Solidity `ParaapeRiskEngine`, wrapped by `BoundedRiskEngine`. The Rust sources in `apps/contracts-stylus` are the same math. New Stylus activations are paused (`activationGas = 2^64 − 1`), so `DeployParaape` leaves `STYLUS_RISK_ENGINE` empty and deploys the Solidity engine.
 
 | Function | Inputs | Output |
 | --- | --- | --- |
 | `realizedVol` | Observations from `PriceObserver` | Volatility per interval |
-| `quotePremium` | Volatility, `s`, `w`, duration, coverage, cell utilization | Premium in USDG |
+| `quotePremium` | Volatility, `s`, duration, coverage, cell utilization | Premium in USDG |
 | `estimateApy` | Cell parameters, current demand, utilization | Indicative LP APY |
 | `depth` | Pool liquidity by tick, `s` | `D(s)` for the payout cap |
 
-Premium model (initial, to be calibrated):
+Premium model (v2, memecoin-calibrated):
 
 ```
-rate    = max(jumpFloor(s, w), windowsPerDuration × pDrawdown(σ, s, w)) × (1 + load)
+p       = pDrawdown(σ, s, duration)
+rate    = max(jumpFloor(s, duration), p) × (1 + load)
 premium = C × rate × utilizationMultiplier(u)
+premium = clamp(premium, minPremium, maxPremium)   ← vault bounds (see below)
+minPremium = max(minPremiumUsdg, C × minPremiumBps / 10_000)
+maxPremium = C × maxPremiumBps / 10_000
 ```
 
-- `pDrawdown` = estimated probability of a drawdown of at least `s` within `w`, from realized volatility `σ`.
-- `jumpFloor` = minimum rate per `(s, w)`. Rugs are jumps, and a pure volatility model underprices them.
-- `utilizationMultiplier` rises as a cell's free capital runs out, like a lending-rate curve.
+The crash window is gone, so the vault prices **one horizon**: the policy duration. `k = 1`. There is no `⌈duration / window⌉` union.
 
-Solidity enforces bounds on every Stylus output (minimum and maximum rate, overflow checks). The engine is referenced by an immutable versioned address per market.
+- `pDrawdown` = estimated probability of a move of at least `s` over the policy duration, from realized volatility `σ`. Longer cover raises this term with `√duration`.
+- **B2.** `jumpFloor(s, duration)` = `0.8% × (1 + s) × √(5m / duration)`, floored so a 30-day policy does not round the jump term to zero. Deeper severity raises the floor. A longer policy leans on `pDrawdown` rather than on a flash-window premium.
+- The engine ABI still has a `windowSec` argument so the Stylus twin keeps the same selector. The vault passes `duration` in that slot.
+- `utilizationMultiplier` rises as a cell's free capital runs out, like a lending-rate curve.
+- **B1 and vault bounds** live in `InsuranceVault._boundPremium`, applied **once per policy** on filled coverage, not per LP cell. `minPremium = max(minPremiumUsdg, C × minPremiumBps / 10_000)` with defaults `$1` and `minPremiumBps = 100` (1%). `maxPremium = C × maxPremiumBps / 10_000` with default 50%. These are protocol guardrails (guardian-updatable via factory config), not the actuarial model. They stop a tiny model rate from selling large cover for $1, and stop a bug or σ spike from charging more than half the payout.
+- `BoundedRiskEngine` only caps the **maximum** rate on each slice the engine returns. It does not apply the notional minimum.
+
+The engine address is immutable per market. A new factory is required to change it. Vaults already deployed keep the engine and config they were created with.
 
 ---
 
@@ -356,7 +351,7 @@ Solidity enforces bounds on every Stylus output (minimum and maximum rate, overf
 ### 11.1 LP
 
 1. Choose a token market, or create it (Section 9.4).
-2. Pick a grid cell `(severity, window)` and see live APY and utilization.
+2. Pick a severity tier (−50% … −95%) and see live APY and utilization.
 3. Deposit USDG and receive cell shares.
 4. Premiums accrue **linearly** to the cell over each backed policy's duration.
 5. Withdraw any time, limited to the cell's unlocked capital. Locked capital is released at policy expiry or settlement.
@@ -364,22 +359,23 @@ Solidity enforces bounds on every Stylus output (minimum and maximum rate, overf
 
 ### 11.2 Buyer
 
-1. Paste the token address. The UI shows a grid heatmap of available capacity and price per cell, plus presets (for example, "Rug Shield 80% / 15m").
-2. Choose severity, window, duration, and coverage `C` (≤ `V × s`).
+1. Paste the token address. The UI shows capacity and price per severity tier.
+2. Choose severity, duration, and coverage `C` (default = the eligible bag, capped by LP and depth).
 3. Eligibility checks run: holding, concentration limit, insider exclusion, entry guard, and payout cap.
 4. Pay the premium in USDG. The policy is filled best-fit from eligible cells and becomes active after the activation delay.
-5. If a trigger is proven, the payout goes pending, then is released after the challenge period.
+5. If a trigger is proven, the payout goes pending for the challenge period. The buyer sees the time remaining, then receives USDG from `release`.
 6. If nothing triggers by expiry, the policy lapses and the premium stays with the LPs.
 
 ### 11.3 Settlement
 
-1. Anyone calls `settle(policyId, t0, t1)`.
-2. The vault verifies the trigger (Section 6), the holding (layer 1), and computes the payout (Section 7.2).
+1. Anyone calls `settle(policyId)`.
+2. The vault verifies the trigger (Section 6), the holding (layer 1), and computes the payout from entry TWAP to now (Section 7.2).
 3. The payout amount is reserved from the backing cells and marked pending.
-4. During the challenge period, a challenger may post a bond with evidence.
-   - Upheld: the policy is voided, the reserved amount returns to the cells, and the challenger is rewarded and gets the bond back.
-   - Rejected: the bond goes to the buyer.
-5. After the period, anyone can call `release(policyId)` to pay the buyer.
+4. During the challenge period, a backing LP may call `challenge(policyId)`. There is no evidence field and no bond posted up front.
+   - The drop, the persistence samples, or the holding check fails: the policy is voided and the reserved amount returns to the cells. The caller pays nothing.
+   - All three still hold: the payout stays pending. The caller pays `challengeSpamFeeUsdg`.
+   - The buyer as caller: the transaction reverts.
+5. After the period, anyone can call `release(policyId)` to pay the buyer. `release` does not re-check the trigger. Silence during the window means the payout stands.
 
 ---
 
@@ -390,8 +386,8 @@ Solidity enforces bounds on every Stylus output (minimum and maximum rate, overf
 - **LP (underwriter):** deposits USDG into a risk cell of a token market and earns premiums; bears payouts.
 - **Buyer (trader):** holds the token, pays a premium, and receives a payout if a rug trigger is proven.
 - **Recorder / keeper:** permissionless. Calls `record` and `settle`, and earns recording bounties.
-- **Challenger:** permissionless. Disputes pending payouts with bonded evidence.
-- **Guardian multisig (MVP only):** resolves challenges and sets protocol parameters behind a timelock. It cannot move LP funds.
+- **Challenger:** a backing LP, not the buyer. Rechecks the on-chain trigger during the pending window.
+- **Guardian multisig (MVP only):** sets protocol parameters behind a timelock. It does not resolve price challenges and it cannot move LP funds. Linking a buyer to an unrelated dumper wallet is off-chain and is not a blank challenge button.
 - **Uniswap pools:** external, read-only price sources. Paraape never deposits into them.
 
 ---
@@ -405,7 +401,7 @@ flowchart TB
   Keeper -->|record, settle| Observer
   Keeper -->|settle, release| Vault
   Challenger -->|challenge| Vault
-  Guardian -->|resolve, params| Vault
+  Guardian -->|params| Vault
   Factory -->|deploys| Vault
   Vault --> Adapter[IPriceSource adapter]
   Adapter --> Observer[PriceObserver]
@@ -444,16 +440,20 @@ Parameters below are starting values set behind a timelock and calibrated later.
 | `H` (holder concentration limit) | 1% of circulating supply |
 | `G` (entry guard drop over last hour) | 20% |
 | Activation delay | 30 minutes |
+| Entry / claim TWAP | 5 minutes |
 | Persistence `K` | 3 observations |
 | `MAX_TICK_MOVE` per observation | 9,116 ticks |
 | Minimum recording interval | 30 seconds |
 | Challenge period | 2 hours |
+| Challenge spam fee | 10 USDG, charged only when a recheck still meets the trigger |
 | Protocol fee | 5% of premiums (funds recording bounties) |
 | `MIN_DEPTH` | 25,000 USDG equivalent of locked quote liquidity |
 
 ---
 
 ## 15. Testnet Deployment (Robinhood Chain Testnet, 46630)
+
+The addresses below are an earlier deployment. Vaults are not upgradeable. The on-chain challenge recheck in Section 8 (spam fee, buyer rejected, no guardian price ruling) is in the current source and applies only to vaults from the next `DeployParaape`.
 
 Verified on the testnet explorer:
 
@@ -462,6 +462,15 @@ Verified on the testnet explorer:
 | Uniswap V4 PoolManager | `0x8366a39CC670B4001A1121B8F6A443A643e40951` |
 | USDG (proxy, 6 decimals) — **production reference** | `0x7E955252E15c84f5768B83c41a71F9eba181802F` |
 | WETH | `0x7943e237c7F95DA44E0301572D358911207852Fa` |
+| `ParaapeRiskEngine` (B2, B3) | `0xCa1F0545dc7253661864696abAB1d4B7f55F8c04` |
+| `BoundedRiskEngine` | `0x667427F456C838555703B40E3D08A01DB2d44FfE` |
+| `PriceObserver` | `0x880f67C72EF76A4209a9E2829f69AaEE6379e92D` |
+| `MarketFactory` (block 128035736) | `0xabc79DA5ef030bE43EF8c7492C914077A3D0e54F` |
+| Testnet locker | `0xa8A4bD1340e1157e8bC26C219E08aeb25438Ba40` |
+| `V4LiquidityRouter` | `0xCeddE4FF08746586A4b2305306e109E6868F7035` |
+| `V4SwapRouter` | `0x26472c9Ff8760E1f18924A9b16eE91579e7B6607` |
+
+Factory config on that deployment: `minPremiumUsdg = 1e6`, `minPremiumBps = 100`, `maxPremiumBps = 5000`. Demo market on this factory: PAPE `0x0bD7d9fCEa7E6b558C0D520F954760DB2C97FADb`, vault `0x494Cd4ef0419ceab589E00669B13C817526501B2`, pool `0x16bcdd801a1315c8bfe3f69f6d3c556a2c26bb5b9a8ced49d4418b6a9fda4340`.
 
 - Pons and pools.trade are not deployed on testnet. The demo deploys:
   - its own test memecoins;
@@ -475,26 +484,21 @@ Verified on the testnet explorer:
 
 ### 15.1 Testnet deploy sequence (mock USDG + mock Chainlink)
 
-Run from `apps/contracts-solidity` with `.env` loaded (`ROBINHOOD_TESTNET_RPC_URL`, `PRIVATE_KEY`). **Stylus risk engine does not need redeploy** if `STYLUS_RISK_ENGINE` still points at the existing activated contract and the Rust code was not changed — only redeploy Solidity.
+Run from `apps/contracts-solidity` with `.env` loaded (`ROBINHOOD_TESTNET_RPC_URL`, `PRIVATE_KEY`). Leave `STYLUS_RISK_ENGINE` unset in that shell (`unset STYLUS_RISK_ENGINE` if it was exported earlier). `DeployParaape` then deploys `ParaapeRiskEngine` and wraps it.
 
 ```bash
-# 0) Optional: Stylus (only if not deployed yet or engine code changed)
-cd apps/contracts-stylus
-cargo stylus deploy --endpoint "$ROBINHOOD_TESTNET_RPC_URL" --private-key "$PRIVATE_KEY" --no-verify
-
-# 1) Mock pUSDG + MockV3Aggregator ETH/USD
-cd ../contracts-solidity
+# 1) Mock pUSDG + MockV3Aggregator ETH/USD (skip if USDG_ADDRESS and the feed are already set)
 forge script script/DeployTestnetMocks.s.sol:DeployTestnetMocks \
   --rpc-url robinhood_testnet --broadcast -vv
 
 # 2) Paste mockUsdg → USDG_ADDRESS, ethUsdFeed → CHAINLINK_ETH_USD_FEED in .env
-#    STYLUS_RISK_ENGINE=0x... (existing Stylus address)
 #    WETH_USDG_POOL_ID=0x000...000
 
+unset STYLUS_RISK_ENGINE
 forge script script/DeployParaape.s.sol:DeployParaape \
   --rpc-url robinhood_testnet --broadcast -vv
 
-# 3) Paste factory, locker, router from logs into .env
+# 3) Paste factory, locker, router, observer from logs into .env
 
 forge script script/DeployDemoMarket.s.sol:DeployDemoMarket \
   --rpc-url robinhood_testnet --broadcast -vv
@@ -512,7 +516,7 @@ Optional: change mock ETH/USD for WETH-quoted market tests — `forge script scr
 | Product-market fit | Serves the ~79% of Robinhood Chain DEX volume that is memecoin trading; compensates after the fact instead of only warning |
 | Innovation | DLMM-style risk cells for insurance, a sampled TWAP oracle for hookless V4 pools, and a depth-based payout cap |
 | Real problem solving | Insider dumps are the dominant rug on locked-liquidity launchpads; Paraape pays when they happen |
-| Arbitrum / Stylus | Stylus risk engine for volatility, premium pricing, and tick-walking depth computation |
+| Arbitrum / Stylus | Pricing math is implemented in Stylus and in Solidity. Testnet uses the Solidity engine while new Stylus activations are paused |
 | USDG bonus | Every value flow is in USDG |
 | Robinhood Chain slot | Built for Robinhood Chain's V4 memecoin infrastructure |
 
@@ -527,7 +531,7 @@ Optional: change mock ETH/USD for WETH-quoted market tests — `forge script scr
 - Policy purchase with best-fit aggregation and all eligibility checks.
 - `PriceObserver`, the V4 adapter, the keeper bot, and recording bounties.
 - Settlement, indemnity-capped payout, the challenge flow, and the guardian multisig.
-- Stylus risk engine: volatility, premium, APY, and depth.
+- Risk engine: volatility, premium (B2 jump floor, B3 duration union), APY, and depth, with B1 and policy caps in the vault.
 - Frontend rebuilt against the final contracts (the current frontend is a mock).
 - Deployment and demo on Robinhood Chain Testnet, including a simulated rug.
 
@@ -546,9 +550,9 @@ Optional: change mock ETH/USD for WETH-quoted market tests — `forge script scr
 
 1. **Recording liveness.** If no one records during a rug, a legitimate trigger may be unprovable. Mitigations are in Section 9.3, but the risk is not eliminated until storage-proof settlement exists.
 2. **Sampled TWAP precision.** Prices between recordings are assumed constant. This is less precise than an in-swap oracle.
-3. **Sybil and bundled wallets.** Holdings split across unlinked wallets evade layers 1–3. The challenge layer depends on off-chain cluster analysis and, in the MVP, on a guardian multisig. This is a stated centralization.
+3. **Sybil and bundled wallets.** Holdings split across wallets that never transfer to each other evade layers 1–3 and the on-chain recheck. The recheck only sees the covered balance, the TWAP, and whether the caller backs the policy. Cluster evidence is not accepted by `challenge`.
 4. **Parameter calibration.** Severity floors, `α`, `H`, `G`, and the premium model are initial values pending historical Robinhood Chain data.
-5. **Pricing model risk.** Volatility-based pricing underestimates jump risk; `jumpFloor` is a stopgap.
+5. **Pricing model risk.** v2 jump floor + notional min premium are calibrated for memecoin demos; mainnet needs backtesting and guardian tuning of `minPremiumBps` / `BASE_JUMP`.
 6. **Cold-start liquidity.** It is unproven that LPs will provide capital at scale before usage data exists.
 7. **Scope.** The MVP is large for a hackathon build; the in-scope list above is the cut.
 

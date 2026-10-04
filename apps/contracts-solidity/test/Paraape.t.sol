@@ -60,7 +60,7 @@ contract ParaapeTest is Test {
         usdg.mint(lp, 100_000e6);
         vm.startPrank(lp);
         usdg.approve(vaultAddr, type(uint256).max);
-        InsuranceVault(vaultAddr).deposit(4, 0, 50_000e6);
+        InsuranceVault(vaultAddr).deposit(4, 50_000e6);
         vm.stopPrank();
     }
 
@@ -75,9 +75,9 @@ contract ParaapeTest is Test {
     }
 
     function test_GridDominance() public pure {
-        assertTrue(GridLib.cellBacksPolicy(4, 0, 4, 0));
-        assertFalse(GridLib.cellBacksPolicy(4, 0, 3, 0));
-        assertTrue(GridLib.cellBacksPolicy(2, 2, 4, 0));
+        assertTrue(GridLib.cellBacksPolicy(4, 4));
+        assertFalse(GridLib.cellBacksPolicy(4, 3));
+        assertTrue(GridLib.cellBacksPolicy(2, 4));
         assertEq(GridLib.severityBps(5), 9500);
         assertEq(GridLib.severityBps(4), 9000);
     }
@@ -91,11 +91,11 @@ contract ParaapeTest is Test {
         assertGt(d95, d50);
     }
 
-    function test_StricterTriggerCheaperPremium() public view {
+    function test_StricterFlashTriggerHigherPremium() public view {
         uint256 sigma = 7e13;
         uint256 p90 = riskEngine.quotePremium(bytes32(0), sigma, 9000, 5 minutes, 7 days, 5_000e6, 0);
         uint256 p50 = riskEngine.quotePremium(bytes32(0), sigma, 5000, 5 minutes, 7 days, 5_000e6, 0);
-        assertLt(p90, p50);
+        assertGt(p90, p50);
         assertLt(p50, 5_000e6 / 2);
     }
 
@@ -104,7 +104,7 @@ contract ParaapeTest is Test {
         usdg.mint(buyer, 10_000e6);
         vm.startPrank(buyer);
         usdg.approve(vaultAddr, type(uint256).max);
-        uint256 id = vault.purchasePolicy(4, 0, 2, 5_000e6, 5_000e6);
+        uint256 id = vault.purchasePolicy(4, 2, 5_000e6, 5_000e6);
         vm.stopPrank();
         InsuranceVault.Policy memory p = vault.getPolicy(id);
         assertEq(p.buyer, buyer);
@@ -126,7 +126,7 @@ contract ParaapeTest is Test {
         usdg.mint(buyer, 10_000e6);
         vm.startPrank(buyer);
         usdg.approve(vaultAddr, type(uint256).max);
-        vault.purchasePolicy(4, 0, 2, 5_000e6, 5_000e6);
+        vault.purchasePolicy(4, 2, 5_000e6, 5_000e6);
         vm.stopPrank();
         uint256 fees = vault.protocolFeesAccrued();
         assertGt(fees, 0);
@@ -148,11 +148,11 @@ contract ParaapeTest is Test {
         usdg.mint(buyer, 10_000e6);
         vm.startPrank(buyer);
         usdg.approve(vaultAddr, type(uint256).max);
-        uint256 id = vault.purchasePolicy(4, 0, 2, 5_000e6, 5_000e6);
+        uint256 id = vault.purchasePolicy(4, 2, 5_000e6, 5_000e6);
         vm.stopPrank();
 
         InsuranceVault.Policy memory beforeP = vault.getPolicy(id);
-        bytes32 key = GridLib.cellKey(4, 0);
+        bytes32 key = GridLib.cellKey(4);
         (uint256 assetsBefore,,) = vault.cells(key);
 
         vm.warp(block.timestamp + 8 days);
@@ -165,10 +165,10 @@ contract ParaapeTest is Test {
         assertEq(assetsAfter, assetsBefore + beforeP.lpPremiumTotal);
     }
 
-    function test_MinSeverityForLongWindowIs90() public pure {
-        assertEq(GridLib.minSeverityIdx(7), 4);
-        assertEq(GridLib.severityBps(4), 9000);
-        assertEq(GridLib.severityBps(5), 9500);
+    function test_DurationGrid() public pure {
+        assertEq(GridLib.durationSeconds(0), 1 days);
+        assertEq(GridLib.durationSeconds(2), 7 days);
+        assertEq(GridLib.durationSeconds(4), 30 days);
     }
 
     function test_QuoteToUsdgPassthrough() public pure {

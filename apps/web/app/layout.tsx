@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import { Archivo } from "next/font/google";
 import localFont from "next/font/local";
+import { headers } from "next/headers";
+import type { Config } from "@wagmi/core";
+import { cookieToInitialState } from "wagmi";
+import { wagmiConfig } from "@/config/reown-wagmi";
 import { Chrome } from "@/components/chrome";
+import { Web3Providers } from "@/components/providers";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { SmoothScroll } from "@/components/smooth-scroll";
-import { WalletProvider } from "@/components/wallet";
 import "./globals.css";
 
 const geistMono = localFont({
@@ -22,21 +26,26 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "Paraape | Rug-pull protection on Robinhood Chain",
+  title: "Paraape | Get rugged. Get paid.",
   description:
-    "Buy isolated, automatically-settled protection against rug-pull crashes. Underwrite it with USDG and earn the premiums.",
+    "Hold the memecoin. Name the crash. If it falls that far, you get paid in USDG.",
   icons: { icon: "/paraape_logo.png" },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const initialState = cookieToInitialState(
+    wagmiConfig as Config,
+    (await headers()).get("cookie"),
+  );
+
   return (
     <html lang="en" className={`${geistMono.variable} ${archivo.variable}`}>
       <body className="flex min-h-[100dvh] flex-col antialiased">
-        <WalletProvider>
+        <Web3Providers initialState={initialState}>
           <a
             href="#main"
             className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:bg-signal focus:px-4 focus:py-2 focus:text-fg"
@@ -48,7 +57,7 @@ export default function RootLayout({
             {children}
           </main>
           <SiteFooter />
-        </WalletProvider>
+        </Web3Providers>
         <SmoothScroll />
         <Chrome />
       </body>

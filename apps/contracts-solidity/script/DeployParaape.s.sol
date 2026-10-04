@@ -15,6 +15,7 @@ import {BoundedRiskEngine} from "../src/risk/BoundedRiskEngine.sol";
 import {ParaapeTestnetLocker} from "../src/adapters/ParaapeTestnetLocker.sol";
 import {ProtocolConfigLib} from "../src/ProtocolConfig.sol";
 import {V4LiquidityRouter} from "../src/testnet/V4LiquidityRouter.sol";
+import {V4SwapRouter} from "../src/testnet/V4SwapRouter.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IRiskEngine} from "../src/interfaces/IRiskEngine.sol";
 import {IPriceSource} from "../src/interfaces/IPriceSource.sol";
@@ -34,9 +35,7 @@ contract DeployParaape is Script {
         } else {
             engineImpl = new ParaapeRiskEngine();
         }
-        BoundedRiskEngine riskEngine = new BoundedRiskEngine(
-            engineImpl, ProtocolConfigLib.defaults().minPremiumUsdg, ProtocolConfigLib.defaults().maxPremiumBps
-        );
+        BoundedRiskEngine riskEngine = new BoundedRiskEngine(engineImpl, ProtocolConfigLib.defaults().maxPremiumBps);
         V4PoolTickSource tickSource = new V4PoolTickSource(poolManager);
         PriceObserver observer = new PriceObserver(
             tickSource, ProtocolConfigLib.defaults().maxTickMove, ProtocolConfigLib.defaults().minRecordInterval
@@ -76,6 +75,7 @@ contract DeployParaape is Script {
         );
         factory.setLockAdapter(address(locker), true);
         V4LiquidityRouter router = new V4LiquidityRouter(poolManager);
+        V4SwapRouter swapRouter = new V4SwapRouter(poolManager);
 
         vm.stopBroadcast();
         console2.log("riskEngine", address(riskEngine));
@@ -84,5 +84,6 @@ contract DeployParaape is Script {
         console2.log("locker", address(locker));
         console2.log("factory", address(factory));
         console2.log("router", address(router));
+        console2.log("swapRouter", address(swapRouter));
     }
 }

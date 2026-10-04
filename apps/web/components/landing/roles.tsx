@@ -8,16 +8,16 @@ import { gsap, SplitText, useGSAP } from "@/lib/gsap";
 const ROLES = [
   {
     href: "/protect",
-    title: "Buy protection",
-    body: "Hold the token, pay a premium in USDG sized by live volatility. If the trigger fires before expiry, the payout is automatic.",
-    facts: ["Must hold the token", "7, 14 or 30 days", "No trigger: premium becomes LP yield"],
-    cta: "Protect a token",
+    title: "Get paid if it rugs",
+    body: "Keep the coin. Choose how far it has to fall, for how long, and how much USDG you want back if it actually happens.",
+    facts: ["You still have to hold it", "1, 3, 7, 14, or 30 days", "No rug: backers keep the premium"],
+    cta: "Protect",
   },
   {
     href: "/underwrite",
-    title: "Underwrite a market",
-    body: "Deposit USDG into one token's isolated vault. Set your own severity and window. Earn every premium paid into that market.",
-    facts: ["Single-sided USDG", "Isolated per token", "Withdraw what isn't locked"],
+    title: "Get paid to back the crash",
+    body: "Put USDG behind one coin and choose which crashes you will pay. Premiums come to you. A smaller crash you back can also fill a worse one.",
+    facts: ["USDG only", "One coin, one pool", "Take back what isn't locked"],
     cta: "Underwrite",
   },
 ];

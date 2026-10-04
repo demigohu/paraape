@@ -82,6 +82,45 @@ contract PriceObserver {
         }
     }
 
+    /// @dev Newest `maxCount` observations, oldest first. Used to prove the drop is still there.
+    function latestObservations(bytes32 poolRef, uint8 maxCount)
+        external
+        view
+        returns (uint32[] memory times, int24[] memory ticks, uint32[] memory blockNumbers, uint8 count)
+    {
+        times = new uint32[](maxCount);
+        ticks = new int24[](maxCount);
+        blockNumbers = new uint32[](maxCount);
+
+        uint16 card = cardinality[poolRef];
+        if (card == 0 || maxCount == 0) return (times, ticks, blockNumbers, 0);
+
+        uint8 take = card < maxCount ? uint8(card) : maxCount;
+        uint16 i = index[poolRef];
+        uint16 newestIdx = i == 0 ? CARDINALITY - 1 : i - 1;
+
+        uint32[] memory revTimes = new uint32[](take);
+        int24[] memory revTicks = new int24[](take);
+        uint32[] memory revBlocks = new uint32[](take);
+        uint8 found;
+        for (uint16 c = 0; c < card && found < take; c++) {
+            uint16 pos = uint16((uint256(newestIdx) + CARDINALITY - uint256(c)) % CARDINALITY);
+            Observation memory obs = observations[poolRef][pos];
+            if (!obs.initialized) continue;
+            revTimes[found] = obs.blockTimestamp;
+            revTicks[found] = obs.tick;
+            revBlocks[found] = obs.blockNumber;
+            found++;
+        }
+        for (uint8 c = 0; c < found; c++) {
+            uint8 src = found - 1 - c;
+            times[c] = revTimes[src];
+            ticks[c] = revTicks[src];
+            blockNumbers[c] = revBlocks[src];
+        }
+        count = found;
+    }
+
     /// @dev Observations strictly after `afterTimestamp` for persistence checks (PRD §6.4)
     function observationsAfter(bytes32 poolRef, uint32 afterTimestamp, uint8 maxCount)
         external

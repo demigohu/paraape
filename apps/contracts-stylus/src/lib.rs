@@ -9,24 +9,7 @@ extern crate alloc;
 mod math;
 
 use alloy_primitives::{B256, Bytes, U256};
-use alloy_sol_types::{sol, SolValue};
 use stylus_sdk::prelude::*;
-
-sol! {
-    struct LiquiditySegment {
-        uint160 sqrtLower;
-        uint160 sqrtUpper;
-        uint128 liquidity;
-    }
-
-    struct DepthSnapshot {
-        int24 currentTick;
-        bool tokenIsCurrency0;
-        uint160 sqrtPriceX96;
-        uint128 activeLiquidity;
-        LiquiditySegment[] segments;
-    }
-}
 
 #[storage]
 #[entrypoint]
@@ -72,42 +55,11 @@ impl RiskEngine {
         math::depth_full_range(quote_reserve, severity_bps)
     }
 
-    pub fn depth_concentrated(&self, severity_bps: u16, liquidity_state: Bytes) -> U256 {
-        depth_concentrated_inner(severity_bps, liquidity_state.as_ref())
+    /// Demo / size: vault falls back to `depth_full_range` when this returns 0 (see `InsuranceVault._poolDepthQuote`).
+    /// Full V4 segment math stays in the Solidity twin for local tests.
+    pub fn depth_concentrated(&self, _severity_bps: u16, _liquidity_state: Bytes) -> U256 {
+        U256::ZERO
     }
-}
-
-fn depth_concentrated_inner(severity_bps: u16, data: &[u8]) -> U256 {
-    if data.is_empty() {
-        return U256::ZERO;
-    }
-    let snap = match DepthSnapshot::abi_decode(data) {
-        Ok(s) => s,
-        Err(_) => return U256::ZERO,
-    };
-    let sqrt_p = U256::from(snap.sqrtPriceX96);
-    let crash = math::crash_sqrt_price(sqrt_p, severity_bps, snap.tokenIsCurrency0);
-    let quote_is_token1 = snap.tokenIsCurrency0;
-    if snap.segments.is_empty() {
-        if snap.activeLiquidity == 0 {
-            return U256::ZERO;
-        }
-        return math::quote_delta(sqrt_p, crash, U256::from(snap.activeLiquidity), quote_is_token1);
-    }
-    let mut depth = U256::ZERO;
-    for seg in snap.segments.iter() {
-        if seg.liquidity == 0 {
-            continue;
-        }
-        let lo = U256::from(seg.sqrtLower);
-        let hi = U256::from(seg.sqrtUpper);
-        let (a, b) = math::intersect(lo, hi, sqrt_p, crash);
-        if a == b {
-            continue;
-        }
-        depth += math::quote_delta(a, b, U256::from(seg.liquidity), quote_is_token1);
-    }
-    depth
 }
 
 

@@ -1,0 +1,41 @@
+---
+title: Web app
+description: Landing, Protect, Underwrite, and Dashboard.
+---
+
+`apps/web` is the Next.js app at [paraape.xyz](https://paraape.xyz). From the repo root, `pnpm web`.
+
+```bash
+cd apps/web
+cp .env.example .env
+```
+
+Restart the dev server after env edits.
+
+| Variable | |
+| --- | --- |
+| `NEXT_PUBLIC_ROBINHOOD_TESTNET_RPC_URL` | RPC the browser uses |
+| `NEXT_PUBLIC_USDG_ADDRESS` | Same USDG as the contracts |
+| `NEXT_PUBLIC_FACTORY_ADDRESS` | `factory` from `DeployParaape` |
+| `NEXT_PUBLIC_LOCKER_ADDRESS` | `locker` |
+| `NEXT_PUBLIC_POOL_MANAGER_ADDRESS` | v4 PoolManager |
+| `NEXT_PUBLIC_PAPE_ADDRESS` | Listed demo token, for the faucet |
+| `NEXT_PUBLIC_FRESH_ADDRESS` | Unlisted demo token, for the faucet |
+| `NEXT_PUBLIC_REOWN_PROJECT_ID` | WalletConnect / Reown project id |
+| `NEXT_PUBLIC_INDEXER_URL` | Optional. Default is `/api/indexer` |
+| `INDEXER_PROXY_URL` | Where that proxy forwards. Dev default is the indexer on port 42069 |
+
+## Pages
+
+| Route | |
+| --- | --- |
+| `/` | Landing |
+| `/protect` | Buy cover |
+| `/underwrite` | Deposit USDG. Opens a market on a locked unlisted pool |
+| `/dashboard` | Policies, deposits, settle, challenge, payout |
+
+The market list, policies, and activity come from the indexer. Quotes, balances, and transactions come from the chain.
+
+A connected wallet on Robinhood testnet can mint testnet USDG, PAPE, and FRESH from the wallet menu when those token addresses are set. `DemoToken.mint` is public. The amounts are for using the app, not for crashing the pool.
+
+Approve spends the premium or the deposit you are about to send, not a multiple of it. A previous larger allowance can still sit on the token until you revoke it.

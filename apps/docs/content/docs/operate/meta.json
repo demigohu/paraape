@@ -1,0 +1,4 @@
+{
+  "title": "Run it",
+  "pages": ["web", "indexer", "keeper", "demo-swap"]
+}

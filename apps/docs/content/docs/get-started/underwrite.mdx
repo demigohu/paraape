@@ -1,0 +1,32 @@
+---
+title: Underwrite
+description: Deposit USDG on one coin and one drop. Premiums come to you. Payouts come out of you.
+---
+
+Open **Underwrite**, pick a token, pick the drop you will pay, and deposit USDG. You receive shares in that drop's cell. Shares are the claim on the cell's assets, in the style of an ERC-4626 vault.
+
+## What you are selling
+
+You agree to pay if price falls at least that far from a buyer's entry. You do not pick the buyer's term. Term only sets when their policy expires and how the premium is sized.
+
+A cell backs a policy only when the policy's drop is at least as deep as the cell:
+
+| You deposited at | Can fill a 90% policy | Can fill a 70% policy | Can fill a 50% policy |
+| --- | --- | --- | --- |
+| 50% | Yes | Yes | Yes |
+| 70% | Yes | Yes | No |
+| 90% | Yes | No | No |
+
+Fill order is the strictest eligible cell first, so capital that only pays on deep crashes stays available for those policies.
+
+## Locked and free
+
+Every USDG of coverage is locked 1:1 until the policy expires, is settled, or is voided. There is no leverage. You can withdraw the unlocked part at any time. A payout reduces the cell's assets and is shared by share holders.
+
+Premiums accrue linearly from `activeFrom` to `expiry`. If nothing triggers, the premium stays in the cell. If it triggers, the reserved payout leaves the cell.
+
+## Opening a market
+
+If the token has no vault yet, a deposit on Underwrite can call `createMarket` when the pool is locked and deep enough. [DeployMemePool](/docs/contracts/deploy) creates that pool and stops before `createMarket`, so the first underwriter opens it.
+
+One market per token. The price source is fixed for the life of that vault. A new factory does not upgrade an old vault.

@@ -1,0 +1,37 @@
+---
+title: Buy cover
+description: Paste a token, name the drop and the term, pay USDG, and keep the coins.
+---
+
+The clicks are in [Use the app](/docs/get-started/use-the-app). Open **Protect**, paste the token address, and choose the drop, the term, and the payout. The premium is quoted in USDG from realized volatility, the drop, the term, and how full the backing cells are. See [Pricing](/docs/protocol/pricing).
+
+Pay from a wallet that holds the tokens. The LP and the token deployer cannot buy cover on their own market.
+
+## What gets checked
+
+At purchase the vault checks:
+
+- You hold the tokens. The balance is stored as `coveredTokens`.
+- Your share of supply is within the holder limit (default 1 percent).
+- You are not the token deployer or the launchpad creator recorded at market creation.
+- Price has not already fallen more than the entry guard over the last hour (default 20 percent).
+- The payout fits under the depth cap for every drop this policy would also trigger.
+- Eligible cells can fill at least the minimum coverage you asked for.
+
+If any check fails, the purchase reverts and no premium is taken.
+
+## When cover actually starts
+
+`activeFrom` is the purchase time plus the activation delay, 30 minutes. `expiry` is the purchase time plus the term.
+
+A 1-day policy is live for about 23.5 hours. The first 30 minutes are before the entry exists, so settle reverts as inactive. The entry is the 5-minute average ending at `activeFrom`, which is why the delay is longer than the average.
+
+Dumping the pool before `activeFrom` sets the entry at the crashed price. Settle then has nothing left to pay.
+
+## After you pay
+
+The policy is filled from eligible cells, strictest drop first. Premiums stream to those cells across the term. You can leave the app. Anyone can settle later if the drop is still there and you still hold the bag.
+
+Selling below `coveredTokens` voids the payout. A crash used to test settle has to come from another wallet, usually the deployer, after cover is active.
+
+On the dashboard, **Settle** asks the contract to pay. If it is too early, the price recovered, or the bag was sold, the transaction reverts. After a successful settle the button becomes a countdown, then **Receive payout**.

@@ -19,3 +19,5 @@ minimumReleaseAgeExclude:
   - '@turbo/windows-64@2.11.4'
   - '@turbo/windows-arm64@2.11.4'
   - turbo@2.11.4
+  - fumadocs-core@16.16.0
+  - fumadocs-ui@16.16.0

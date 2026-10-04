@@ -1,0 +1,119 @@
+---
+title: Deploy
+description: Mocks, protocol, a listed market, an unlisted pool, and the swap router.
+---
+
+Run from `apps/contracts-solidity` with Foundry. Chain ID is 46630. `foundry.toml` names the RPC `robinhood_testnet`.
+
+## Deployment addresses
+
+This is the current Paraape deployment on Robinhood Chain testnet. A new `DeployParaape` replaces it. The factory was created in block 128515333. Transactions are on the [testnet explorer](https://explorer.testnet.chain.robinhood.com).
+
+| Contract | Address |
+| --- | --- |
+| `ParaapeRiskEngine` | [`0xEB21A19766A08a60ac001f9dB6AcF3cEdC429d2e`](https://explorer.testnet.chain.robinhood.com/address/0xEB21A19766A08a60ac001f9dB6AcF3cEdC429d2e) |
+| `BoundedRiskEngine` | [`0xC3dF6148B9D05723e9D5d27cc6F972B347F3B38e`](https://explorer.testnet.chain.robinhood.com/address/0xC3dF6148B9D05723e9D5d27cc6F972B347F3B38e) |
+| `V4PoolTickSource` | [`0x044321A7df3E33d4115ed99F98f2913E1204eea1`](https://explorer.testnet.chain.robinhood.com/address/0x044321A7df3E33d4115ed99F98f2913E1204eea1) |
+| `PriceObserver` | [`0xDA5eD57F4d8Da626a7f36270FD32989D18712295`](https://explorer.testnet.chain.robinhood.com/address/0xDA5eD57F4d8Da626a7f36270FD32989D18712295) |
+| `V4ChainlinkPriceSource` | [`0x25fc9a901FcfB7A44E748015D8702E205ba2A9E9`](https://explorer.testnet.chain.robinhood.com/address/0x25fc9a901FcfB7A44E748015D8702E205ba2A9E9) |
+| `ParaapeTestnetLocker` | [`0xF3CebAff9C50a7B8b6d5C6d8EC611BD42800CD22`](https://explorer.testnet.chain.robinhood.com/address/0xF3CebAff9C50a7B8b6d5C6d8EC611BD42800CD22) |
+| `VaultDeployer` | [`0x39729b2a79E03210fdb0B4A47CbA96B577E20c75`](https://explorer.testnet.chain.robinhood.com/address/0x39729b2a79E03210fdb0B4A47CbA96B577E20c75) |
+| `MarketFactory` | [`0xfd748C5571D31d37C7daC77eB74CC5B23964F794`](https://explorer.testnet.chain.robinhood.com/address/0xfd748C5571D31d37C7daC77eB74CC5B23964F794) |
+| `V4LiquidityRouter` | [`0x8C2fB538299012dA7F51b03b4719997Fc950bb62`](https://explorer.testnet.chain.robinhood.com/address/0x8C2fB538299012dA7F51b03b4719997Fc950bb62) |
+| `V4SwapRouter` | [`0xC61a69C0DF49b4Fd5963805CD07879Fa67Cf06b6`](https://explorer.testnet.chain.robinhood.com/address/0xC61a69C0DF49b4Fd5963805CD07879Fa67Cf06b6) |
+
+Vaults call `BoundedRiskEngine`. The guardian on this factory is [`0xC466cA95b3D16D1098bda50aEc65927eCdBD9807`](https://explorer.testnet.chain.robinhood.com/address/0xC466cA95b3D16D1098bda50aEc65927eCdBD9807).
+
+The factory was constructed against these existing contracts:
+
+| Contract | Address |
+| --- | --- |
+| USDG (`DemoToken`) | [`0x6BacC0Ee1F503f7f8c2D2cED742A115DaFE7dDA6`](https://explorer.testnet.chain.robinhood.com/address/0x6BacC0Ee1F503f7f8c2D2cED742A115DaFE7dDA6) |
+| Chainlink ETH/USD mock | [`0xa2322483B4caF08Bb8664873EE1161502331de31`](https://explorer.testnet.chain.robinhood.com/address/0xa2322483B4caF08Bb8664873EE1161502331de31) |
+| WETH | [`0x7943e237c7F95DA44E0301572D358911207852Fa`](https://explorer.testnet.chain.robinhood.com/address/0x7943e237c7F95DA44E0301572D358911207852Fa) |
+| PoolManager | [`0x8366a39CC670B4001A1121B8F6A443A643e40951`](https://explorer.testnet.chain.robinhood.com/address/0x8366a39CC670B4001A1121B8F6A443A643e40951) |
+
+Demo markets from that factory:
+
+| Market | Token | Vault |
+| --- | --- | --- |
+| Listed, $PAPE | [`0x1a01888A1E8a5483EbdA9a5bc0A853d9F1DD7C0b`](https://explorer.testnet.chain.robinhood.com/address/0x1a01888A1E8a5483EbdA9a5bc0A853d9F1DD7C0b) | [`0x91e14133E46314aCe0161e5D31298A34643ef638`](https://explorer.testnet.chain.robinhood.com/address/0x91e14133E46314aCe0161e5D31298A34643ef638) |
+| Unlisted, $FRESH | [`0x2cEf7707f0e87BA1010259AEe3A12FD0c88E35C1`](https://explorer.testnet.chain.robinhood.com/address/0x2cEf7707f0e87BA1010259AEe3A12FD0c88E35C1) | Opened later from Underwrite |
+
+Do not commit `.env`. Shell exports override the file. Before a script, unset stale addresses:
+
+```bash
+unset FACTORY_ADDRESS LOCKER_ADDRESS V4_ROUTER_ADDRESS V4_SWAP_ROUTER_ADDRESS DEMO_MEME_ADDRESS STYLUS_RISK_ENGINE
+set -a && source .env && set +a
+```
+
+Leave `STYLUS_RISK_ENGINE` unset so the Solidity engine is deployed.
+
+## 1. Mocks
+
+Skip if `USDG_ADDRESS` and the Chainlink feed are already set.
+
+```bash
+forge script script/DeployTestnetMocks.s.sol:DeployTestnetMocks \
+  --rpc-url robinhood_testnet --broadcast -vv
+```
+
+Paste `mockUsdg` into `USDG_ADDRESS` and `ethUsdFeed` into `CHAINLINK_ETH_USD_FEED`. Set `WETH_USDG_POOL_ID` to 32 zero bytes when WETH converts through Chainlink. `WETH_ADDRESS` and `POOL_MANAGER_ADDRESS` are required.
+
+## 2. Protocol
+
+```bash
+forge script script/DeployParaape.s.sol:DeployParaape \
+  --rpc-url robinhood_testnet --broadcast -vv
+```
+
+Save the logs:
+
+| Log | Env |
+| --- | --- |
+| `riskEngine` | the wrapper vaults call |
+| `observer` | `PRICE_OBSERVER_ADDRESS` for the keeper and indexer |
+| `priceSource` | |
+| `locker` | `LOCKER_ADDRESS` |
+| `factory` | `FACTORY_ADDRESS` and the indexer's `MARKET_FACTORY_ADDRESS` |
+| `router` | `V4_ROUTER_ADDRESS` (liquidity) |
+| `swapRouter` | `V4_SWAP_ROUTER_ADDRESS` |
+
+Also save the factory creation block as `MARKET_FACTORY_START_BLOCK`.
+
+A failed explorer verify does not undo the deploy. Retry verify later. Do not redeploy just to get a checkmark.
+
+## 3. Listed demo market
+
+`DeployDemoMarket` deploys a meme, adds full-range liquidity (default 1 billion tokens and 10,000 USDG), attests the lock, and calls `createMarket`.
+
+```bash
+forge script script/DeployDemoMarket.s.sol:DeployDemoMarket \
+  --rpc-url robinhood_testnet --broadcast -vv
+```
+
+Logs `meme`, `poolRef`, and `vault`. The deployer needs at least `DEMO_POOL_USDG` of USDG. The script mints the LP tokens.
+
+## 4. Unlisted pool
+
+`DeployMemePool` does the same liquidity and lock, then stops. The log `vault` is the zero address. Underwrite opens the market. Default name is `FRESH MEME`, symbol `FRESH`. Override with `MEME_NAME` and `MEME_SYMBOL`.
+
+```bash
+forge script script/DeployMemePool.s.sol:DeployMemePool \
+  --rpc-url robinhood_testnet --broadcast -vv
+```
+
+## 5. Swap router
+
+`DeployParaape` already logs `swapRouter`. Run `DeployV4SwapRouter` only when that line is missing. It is not `V4_ROUTER_ADDRESS`.
+
+Copy the new addresses into the indexer, keeper, demo-swap, and web env files, then restart those processes. Old vaults stay on the old factory.
+
+To move the mock ETH/USD price, for WETH-quoted markets only:
+
+```bash
+forge script script/SetMockEthUsd.s.sol:SetMockEthUsd \
+  --rpc-url robinhood_testnet --broadcast
+```
+
+Transactions are on `https://explorer.testnet.chain.robinhood.com`.

@@ -1,0 +1,34 @@
+---
+title: Pricing
+description: Premiums come from realized volatility, the drop, the term, and how full the cell is.
+---
+
+The risk engine holds no funds. It quotes a premium and an indicative APY. On Robinhood testnet the live engine is Solidity `ParaapeRiskEngine`, wrapped by `BoundedRiskEngine`. The Rust sources in `apps/contracts-stylus` are the same math. New Stylus activations are paused, so deploy leaves `STYLUS_RISK_ENGINE` empty.
+
+The engine address is fixed per market. Changing it means a new factory. Old vaults keep the engine they were created with.
+
+## The premium
+
+Roughly:
+
+```
+p        = probability of a move of at least s over the term, from realized vol
+rate     = max(jump floor, p) × (1 + load)
+premium  = coverage × rate × utilization multiplier
+premium  = clamp(premium, minimum, maximum)
+```
+
+- Longer cover raises the probability term with the square root of the term.
+- The jump floor keeps a short policy from pricing at nearly zero. A longer policy leans on the probability term.
+- Utilization rises as free capital in the cell runs out, like a lending rate.
+- The vault applies the minimum and maximum once per policy. Defaults are a floor of the greater of 1 USDG and 1 percent of coverage, and a ceiling of 50 percent of coverage. Those bounds are guardrails. They are not the pricing model.
+
+The engine still has a `windowSec` argument so the Stylus twin keeps the same function selector. The vault passes the term in that slot. There is no crash window and no "number of windows in the term" multiplier.
+
+## Where volatility comes from
+
+`realizedVol` reads observations exported from `PriceObserver`. A flat pool with few samples looks like no volatility, and premiums stay near the floor. Moving the pool and letting the keeper record is how a demo gets a real quote. See [Demo swap](/docs/operate/demo-swap).
+
+## LP yield
+
+Indicative APY is premiums against the capital locked to back them. It is an estimate from the engine, not a promised rate. A payout reduces assets. No trigger means the premium stays in the cell and accrues linearly over the policy.

@@ -1,0 +1,16 @@
+---
+title: Roles
+description: Who can buy, back, record, settle, challenge, and change parameters.
+---
+
+| Role | What they do | What they cannot do |
+| --- | --- | --- |
+| Buyer | Hold the token, pay a premium, receive USDG if the drop is proven | Challenge their own payout. Buy on a market they deployed or underwrite as the excluded insider |
+| Underwriter | Deposit USDG into one cell, earn premiums, withdraw unlocked capital | Get paid on a drop milder than the cell they chose |
+| Recorder | Call `record` or `recordPool`. The keeper is one recorder | A special permission. Recording is open to anyone |
+| Settler | Call `settle` | The contract does not settle itself. The shipped keeper does not call `settle` |
+| Challenger | A backing LP rechecks a pending payout | The buyer. Anyone with no shares in a backing cell |
+| Guardian | Update protocol parameters | Decide a price. Move LP funds. Treat two wallets as one person |
+| Pool | The Uniswap v4 pool Paraape reads | Custody. Paraape does not deposit into the pool |
+
+The token deployer and the launchpad creator stored at `createMarket` are excluded from buying. Passing the zero address for both, which the app does when it does not know a creator, stores the zero address. The zero address is not a buyer.

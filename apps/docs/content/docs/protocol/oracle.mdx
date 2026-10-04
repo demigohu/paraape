@@ -1,0 +1,46 @@
+---
+title: Oracle
+description: Paraape samples the pool itself. Uniswap v4 does not keep a TWAP for these pools.
+---
+
+Uniswap v4 has no built-in price history. A pool only has an oracle if it was created with an oracle hook. The hook address is fixed in the pool key.
+
+Pons pools use a fee hook, not an oracle. pools.trade pools use no hook. Paraape cannot add one later. Off-chain charts are not a settle price.
+
+## PriceObserver
+
+`record(poolRef)` reads the current tick from the PoolManager (`getSlot0` through `extsload`) and appends it to a ring buffer of 2,048 samples, in the same cumulative-tick shape as the Uniswap v3 oracle.
+
+- Anyone can call it.
+- The same pool cannot be recorded again until `minRecordInterval` (30 seconds).
+- The new tick is clamped to `MAX_TICK_MOVE` from the previous sample.
+- `observe` returns cumulative ticks so a 5-minute average can be computed.
+
+This is a sampled average. Between two recordings the price is treated as constant. It is coarser than a v3 oracle that writes inside every swap.
+
+An 80 percent dump is more than one sample can record, because of the clamp. It takes about two samples to land, then about five minutes of the new price before the average matches, then the last three samples have to agree.
+
+## Two prices, two jobs
+
+| Question | Source |
+| --- | --- |
+| Did this memecoin fall? | `PriceObserver` on that token's pool |
+| How many USDG is WETH? | Chainlink ETH/USD, or a WETH/USDG pool if no feed is set |
+
+Chainlink is not the memecoin price. Moving the ETH/USD mock does not settle a USDG-quoted meme policy.
+
+## Who records
+
+Contracts only run when a transaction calls them. Swaps on the meme pool do not call Paraape.
+
+1. Purchase, deposit, withdraw, and settle also record that market's pool.
+2. The [keeper](/docs/operate/keeper) records on an interval while you run it.
+3. Anyone can call `record` or `InsuranceVault.recordPool()`.
+
+`record` stores the sample. It does not transfer the recording bounty described in the spec. The bounty amount exists on protocol config. Paying it inside `record` is not implemented.
+
+If nobody records through a crash, a real drop can be unprovable. That is the main oracle risk. See [Risks](/docs/reference/risks).
+
+## Liveness before a buy
+
+The entry guard looks back about an hour. A new market needs recordings across that hour before purchases succeed. The keeper is how you get them.

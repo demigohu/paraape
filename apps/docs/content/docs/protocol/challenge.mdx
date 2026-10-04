@@ -1,0 +1,36 @@
+---
+title: Challenge
+description: A backing LP can recheck a pending payout. The buyer cannot. There is no price jury.
+---
+
+After `settle`, the payout sits in `PendingPayout` until `challengeDeadline`, 2 hours later. `challenge(policyId)` is a recheck, not a dispute you fill in.
+
+## Who can call it
+
+- The caller must hold shares in a cell that backs this policy.
+- The caller must not be the buyer.
+- The policy must still be pending, and the deadline must not have passed.
+
+There is no evidence field and no bond posted up front.
+
+## What the transaction does
+
+The vault recomputes the drop, the persistence samples, and the holding check.
+
+| Recheck | Result |
+| --- | --- |
+| Any check fails | The policy is voided in that transaction. Reserved USDG returns to the cells. The caller pays nothing. |
+| All three still hold | The payout stays pending. The caller pays `challengeSpamFeeUsdg` (default 10 USDG) into protocol fees. |
+| Buyer calls | The transaction reverts. |
+
+The guardian does not pick a price. `release` after the deadline does not recheck. If nobody challenges, the buyer is paid the reserved amount.
+
+## What a challenge cannot see
+
+Two wallets with no transfer between them. The recheck only sees this policy's covered balance, the averages, and the caller's shares. Linking a buyer to a different dumper is not an on-chain input.
+
+## Older vaults
+
+Vaults are not upgraded. A factory deployed before this recheck still uses the older flow: a flat bond, status `Challenged`, and a guardian resolution. Read the vault you are looking at. A new `DeployParaape` does not change policies on an old factory.
+
+On the dashboard the buyer sees a countdown, then **Receive payout**. **Challenge** is shown to a connected wallet that is not the buyer, while the window is open.

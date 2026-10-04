@@ -44,7 +44,6 @@ export function SiteFooter() {
             <div className="flex flex-col gap-3 p-6 md:p-10">
               <span className="heading mb-3 text-xl">Network</span>
               <span className="mono-caps">Robinhood Chain testnet</span>
-              <span className="mono-caps">Arbitrum Sepolia</span>
               <span className="mono-caps">Settlement: USDG</span>
             </div>
           </div>

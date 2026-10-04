@@ -1,0 +1,86 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+/*
+ * Tokens mirror apps/docs/DESIGN.md (same palette as apps/web).
+ * Page surface is #dbdbda. Inverse #050505 is the dark theme.
+ */
+@theme {
+  --font-mono: "neueralMono", var(--font-geist-mono), "SFMono-Regular", "SF Mono",
+    Consolas, monospace;
+  --font-sans: var(--font-mono);
+}
+
+:root {
+  --color-fd-background: #dbdbda;
+  --color-fd-foreground: #050505;
+  --color-fd-muted: #d1d1d0;
+  --color-fd-muted-foreground: #202020;
+  --color-fd-popover: #dbdbda;
+  --color-fd-popover-foreground: #050505;
+  --color-fd-card: #d1d1d0;
+  --color-fd-card-foreground: #050505;
+  --color-fd-border: rgb(5 5 5 / 0.16);
+  --color-fd-primary: #ff641c;
+  --color-fd-primary-foreground: #050505;
+  --color-fd-secondary: #d1d1d0;
+  --color-fd-secondary-foreground: #050505;
+  --color-fd-accent: rgb(255 100 28 / 0.14);
+  --color-fd-accent-foreground: #050505;
+  --color-fd-ring: #050505;
+}
+
+.dark {
+  --color-fd-background: #050505;
+  --color-fd-foreground: #ffffff;
+  --color-fd-muted: #141414;
+  --color-fd-muted-foreground: #dbdbda;
+  --color-fd-popover: #050505;
+  --color-fd-popover-foreground: #ffffff;
+  --color-fd-card: #141414;
+  --color-fd-card-foreground: #ffffff;
+  --color-fd-border: rgb(219 219 218 / 0.16);
+  --color-fd-primary: #ff641c;
+  --color-fd-primary-foreground: #050505;
+  --color-fd-secondary: #141414;
+  --color-fd-secondary-foreground: #ffffff;
+  --color-fd-accent: rgb(255 100 28 / 0.18);
+  --color-fd-accent-foreground: #ffffff;
+  --color-fd-ring: #dbdbda;
+}
+
+.dark #nd-sidebar {
+  --color-fd-muted: #141414;
+  --color-fd-secondary: #141414;
+  --color-fd-muted-foreground: #dbdbda;
+}
+
+html {
+  color-scheme: light;
+  background: var(--color-fd-background);
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-fd-background);
+  color: var(--color-fd-foreground);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #ff641c;
+  color: #050505;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-fd-ring);
+  outline-offset: 3px;
+}

@@ -1,0 +1,41 @@
+---
+title: Indexer
+description: Ponder index for markets, policies, LP rows, and keeper targets.
+---
+
+`apps/indexer` indexes factory `MarketCreated`, vault lifecycle, and `PriceObserver.Recorded` on chain 46630. The web app and the keeper both read it.
+
+```bash
+cd apps/indexer
+cp .env.example .env
+pnpm dev
+```
+
+`pnpm dev` serves port 42069 and does not need `DATABASE_SCHEMA`. `pnpm start` does. Production should set `DATABASE_URL` to Postgres. Dev uses embedded PGlite.
+
+| Variable | |
+| --- | --- |
+| `PONDER_RPC_URL_46630` | HTTP RPC. You can reuse `ROBINHOOD_TESTNET_RPC_URL` |
+| `MARKET_FACTORY_ADDRESS` | `FACTORY_ADDRESS` from the deploy you want to follow |
+| `MARKET_FACTORY_START_BLOCK` | The block that created that factory |
+| `PRICE_OBSERVER_ADDRESS` | `observer` from the same deploy |
+| `KEEPER_EXTRA_POOL_REFS` | Optional extra pool ids merged into keeper targets |
+
+The start block has to be that factory's creation block. An earlier block replays older factories. A later block misses markets. Restart after you change either value.
+
+## HTTP
+
+| Route | |
+| --- | --- |
+| `GET /markets` | Every market |
+| `GET /markets/token/:address` | One token, with vault, policies, oracle, cells |
+| `GET /policies/buyer/:address` | Policies for a wallet |
+| `GET /lp/:address` | LP shares |
+| `GET /activity/wallet/:address` | Purchases, deposits, settle, challenge, release |
+| `GET /keeper/targets` | `poolRefs` and `vaultAddresses` |
+| `GET /graphql` | Schema GraphQL |
+| `GET /ready` | Not ready until backfill finishes |
+
+`/keeper/targets` is each insured pool, plus pools seen in `Recorded`, plus `KEEPER_EXTRA_POOL_REFS`.
+
+Vaults are discovered from `MarketCreated`. This process does not upgrade rows from an old factory. Point it at the new address and start block.

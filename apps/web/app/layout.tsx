@@ -26,6 +26,7 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://paraape.xyz"),
   title: "Paraape | Get rugged. Get paid.",
   description:
     "Hold the memecoin. Name the crash. If it falls that far, you get paid in USDG.",

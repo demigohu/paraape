@@ -1,0 +1,40 @@
+---
+title: Run the stack
+description: Contracts, indexer, keeper, and the web app, in that order.
+---
+
+Paraape on testnet is four processes. Addresses from one `DeployParaape` have to match in every env file. An older factory left in the shell overrides `.env`.
+
+## Order
+
+1. [Deploy](/docs/contracts/deploy) the contracts. Leave `STYLUS_RISK_ENGINE` empty.
+2. Start the [indexer](/docs/operate/indexer) at the factory creation block.
+3. Start the [keeper](/docs/operate/keeper) against that indexer and that `PriceObserver`.
+4. Start the [web app](/docs/operate/web) with the same factory, locker, PoolManager, and USDG.
+5. Optional: [demo swap](/docs/operate/demo-swap) to move the pool.
+
+A fresh market needs on the order of an hour of successful records before the entry guard allows a purchase. The guard looks back an hour. Without that history, buys revert.
+
+## What each process owns
+
+| Process | Does | Does not |
+| --- | --- | --- |
+| Web | Quotes, purchases, deposits, settle, release, challenge | Record the oracle on a timer |
+| Indexer | Markets, policies, LP rows, activity, keeper targets | Send transactions |
+| Keeper | `recordPool` / `record` about every 35 seconds | `settle` or `release` |
+| Demo swap | Trades the demo pool | Open markets |
+
+## Repo map
+
+| Path | |
+| --- | --- |
+| `apps/contracts-solidity` | Vault, factory, oracle, deploy scripts |
+| `apps/contracts-stylus` | Same premium math in Rust. Not activated on this testnet |
+| `apps/indexer` | Ponder |
+| `apps/keeper` | Oracle recorder |
+| `apps/web` | Landing, Protect, Underwrite, Dashboard |
+| `apps/demo-swap` | Testnet pool trades |
+| `docs/PRD.md` | Engineering spec. This site does not replace it |
+| `apps/docs` | This site |
+
+Each app README is the command list. This section is the map.

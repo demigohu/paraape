@@ -1,0 +1,31 @@
+---
+title: Demo swap
+description: Trade the demo pool so the oracle has a price path.
+---
+
+`apps/demo-swap` swaps the demo meme/USDG pool through `V4SwapRouter`. That address is the `swapRouter` log from `DeployParaape`. `V4_ROUTER_ADDRESS` is the liquidity router. This script does not use it.
+
+```bash
+pnpm --filter @paraape/demo-swap start
+```
+
+Fill `.env` with the RPC, a key, `USDG_ADDRESS`, `DEMO_MEME_ADDRESS`, `POOL_MANAGER_ADDRESS`, and `V4_SWAP_ROUTER_ADDRESS`.
+
+## What a swap size means
+
+`SIM_USDG_PER_SWAP` is a 6-decimal notional. `500000` is 0.5 USDG.
+
+- On a **buy**, that notional is USDG in.
+- On a **sell**, the script turns it into a meme amount with `× 1e12`. `500000` sells 0.5 tokens.
+
+A 0.5 token sell does not move a pool of 1 billion tokens and 10,000 USDG.
+
+## Two jobs
+
+**Volatility.** Many small buys, with the keeper recording, so consecutive samples see different ticks. `SIM_BUY_ONLY=1` keeps the sell off so the USD price on Protect does not get walked down. Protect shows balance times the 5-minute average.
+
+**A drop that can settle.** Sell a large meme amount from the deployer after `activeFrom`. The buyer must not be the seller. Raise `SIM_USDG_PER_SWAP` under `SIM_SELL_ONLY=1` until the sell is large next to the pool, and mint those tokens to the deployer first. `DemoToken.mint` is public on the testnet tokens.
+
+Leave `SIM_RECORD_AFTER_SWAP` at `0` while the keeper is running. Set it to `1` only when the keeper is off. The observer rejects a second sample inside 30 seconds.
+
+Use a different key from the keeper.

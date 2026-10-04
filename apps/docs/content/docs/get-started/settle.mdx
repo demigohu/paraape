@@ -1,0 +1,33 @@
+---
+title: Settle and payout
+description: Anyone can settle. The buyer receives USDG after a two-hour window.
+---
+
+`settle(policyId)` is permissionless. The buyer, a keeper, or a stranger can send it. The shipped keeper bot does not. It only records prices.
+
+## Settle succeeds when
+
+All of these are true. The caller does not pass a price or a timestamp.
+
+1. The policy is active: `activeFrom` has passed and `expiry` has not.
+2. The 5-minute average now is at or below `(1 - drop)` times the entry average.
+3. The buyer still holds at least `coveredTokens`.
+4. The same drop still holds on the 5-minute average at each of the last K observations (default 3), each in its own block, each at or after `activeFrom`.
+
+The payout is the loss from the entry average, capped by the coverage purchased. See [Coverage](/docs/protocol/coverage).
+
+## Then it waits
+
+The status becomes pending. The USDG is reserved from the backing cells. For 2 hours a backing LP may [challenge](/docs/protocol/challenge). `release` after the deadline pays the buyer and does not recheck the price. Silence means the payout stands.
+
+If the term ends with no settle, anyone can close the policy. The premium stays with the LPs and the locked capital unlocks.
+
+## A settle test on the demo pool
+
+1. Buy cover from a second wallet and wait until `activeFrom`.
+2. Keep the [keeper](/docs/operate/keeper) recording so the 5-minute average and the last three samples exist.
+3. Sell a large amount of the meme from the **deployer**, not from the buyer.
+4. Wait until the new price has been the average for about five minutes and the last samples are all down.
+5. Call settle. If the average is still the old price, it reverts. If the buyer sold the bag, it reverts with a holding error.
+
+A 0.5 token sell does not move a pool of 1 billion tokens and 10,000 USDG. See [Demo swap](/docs/operate/demo-swap).

@@ -1,0 +1,38 @@
+---
+title: Coverage and payout
+description: How much you can buy, and how much settle actually pays.
+---
+
+Coverage is fully collateralized. Every USDG of cover is locked from LP capital until the policy ends. A rug hits every policy on that token together, so the vault does not lend the same USDG twice.
+
+## Cap at purchase
+
+```
+coverage <= min(bag value × drop, free USDG in eligible cells, depth cap)
+```
+
+Bag value is the buyer's balance times the spot average times the quote-to-USDG rate, measured at purchase. The default in the app is that whole cap. The buyer can take less, down to the minimum they set.
+
+The depth cap stops the pool from insuring a crash that is cheaper to fake than it is to pay. See [Safeguards](/docs/protocol/safeguards).
+
+## Payout at settle
+
+```
+payout = min(coverage, coveredTokens × (P(entry) − P(now)) × quoteToUsdg)
+```
+
+`coveredTokens` is the balance recorded at purchase. Settle still requires the buyer to hold at least that much. The payout never exceeds the coverage purchased, and never exceeds the loss from the entry average.
+
+## Quote asset
+
+Premiums, caps, and payouts are USDG.
+
+- A meme/USDG pool is already in USDG. No conversion.
+- A meme/WETH pool converts with Chainlink ETH/USD. WETH is treated as ETH. USDG is treated as one dollar for this conversion. A depeg is out of scope for the current version.
+- If no Chainlink feed is configured, conversion can use a WETH/USDG pool average instead.
+
+The price source is stored on the vault and does not change for the life of that market.
+
+## Timing
+
+A successful settle moves the payout to pending for the challenge period. The price check is finished inside `settle`. `release` pays the reserved amount. It does not recompute the loss.

@@ -1,0 +1,43 @@
+---
+title: Paraape
+description: Cover for the memecoin you hold. Name the crash. If the coin falls that far, you get paid in USDG.
+---
+
+Paraape pays a holder when their memecoin falls as far as they named, any time before the cover expires. The bag stays in the wallet. There is no claim form.
+
+Premiums, deposits, and payouts are USDG. Each token has its own pool of capital. A crash in one coin does not touch the people who backed another.
+
+This site is the product and protocol reference. The engineering spec stays in `docs/PRD.md` at the repo root. Contract addresses change every deploy, so this site describes the rules and points at the deploy logs for addresses.
+
+<Cards>
+  <Card title="How it works" href="/docs/get-started/how-it-works" description="The deal, in one pass." />
+  <Card title="Buy cover" href="/docs/get-started/buy-cover" description="Pick the drop, the term, and the payout." />
+  <Card title="Underwrite" href="/docs/get-started/underwrite" description="Back one coin with USDG." />
+  <Card title="Settle" href="/docs/get-started/settle" description="Who gets paid, and when." />
+</Cards>
+
+## The deal
+
+You hold a memecoin. You choose how far the price has to fall, for how long, and how much USDG you want back. You pay a premium. About 30 minutes later the cover turns on. If the 5-minute average is still down that far before expiry, anyone can settle and USDG is reserved for you. Two hours after that, the payout can be released.
+
+If the price bounced, the premium stays with the people who backed you.
+
+## What this is for
+
+Memecoins on Robinhood Chain trade in Uniswap v4 pools. Launchpads lock the liquidity, so the remaining rug is an insider selling into the pool. Scanners can warn you. Paraape pays you if you still hold the bag.
+
+| | |
+| --- | --- |
+| Chain | Robinhood Chain testnet, chain ID 46630 |
+| Settlement | USDG, 6 decimals |
+| Drops | 50, 60, 70, 80, 90, 95 percent from the entry average |
+| Terms | 1, 3, 7, 14, or 30 days |
+| Price | Sampled 5-minute average from that coin's own pool |
+
+## Where to go next
+
+- [Trigger](/docs/protocol/trigger) for the exact settle rule.
+- [Oracle](/docs/protocol/oracle) for where the price comes from.
+- [Safeguards](/docs/protocol/safeguards) for what a fake crash cannot collect.
+- [Deploy](/docs/contracts/deploy) to put a new stack on testnet.
+- [Run the stack](/docs/get-started/run-the-stack) for the app, indexer, and keeper.

@@ -1,0 +1,33 @@
+---
+title: Keeper
+description: Posts oracle samples. It does not settle policies.
+---
+
+The keeper calls `InsuranceVault.recordPool()` for each insured vault. That records the vault's pool. For any other pool on the indexer target list it calls `PriceObserver.record()`.
+
+It does not call `settle` or `release`. Someone still sends those.
+
+Markets come from the indexer (`GET /keeper/targets`). The keeper does not scan factory logs itself. Start the indexer first.
+
+```bash
+cd apps/keeper
+cp .env.example .env
+# RPC, PRIVATE_KEY, PRICE_OBSERVER_ADDRESS, KEEPER_INDEXER_URL
+pnpm start
+```
+
+| Variable | |
+| --- | --- |
+| `ROBINHOOD_TESTNET_RPC_URL` | Chain 46630 |
+| `PRIVATE_KEY` | Pays gas for records |
+| `PRICE_OBSERVER_ADDRESS` | `observer` from the same deploy as the factory |
+| `KEEPER_INDEXER_URL` | Indexer base URL, the same process on port 42069 |
+| `KEEPER_INDEXER_WAIT_READY` | `1` waits for `/ready` |
+| `RECORD_INTERVAL_MS` | Default 35000. The contract rejects a sample inside 30 seconds |
+| `POOL_REFS`, `VAULT_ADDRESSES` | Optional extras merged with the indexer |
+
+A failed poll keeps the last good target list. `rate limited` after a successful `recordPool` means the 30-second window is still open. The next interval retries.
+
+Use a different key from demo-swap if both broadcast. One key races nonces.
+
+A new market needs recordings across about an hour before the entry guard lets someone buy.

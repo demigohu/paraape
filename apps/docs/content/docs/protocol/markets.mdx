@@ -1,0 +1,30 @@
+---
+title: Markets
+description: One vault per token. Permissionless once the pool is locked and deep enough.
+---
+
+`createMarket` deploys an `InsuranceVault` for one token and binds it to one pool. Only one market per token.
+
+## What the factory checks
+
+- The pool exists and one currency is the token.
+- The quote is USDG or WETH.
+- An allowlisted lock adapter says the liquidity is locked.
+- Locked quote depth is at least `minDepthUsdg` (default 25,000 USDG).
+- The token deployer and launchpad creator are stored. They cannot buy cover. The app passes both as the zero address when it does not know a launchpad creator.
+
+The price source copied onto the vault is the factory's source at that moment. It stays for the life of the market.
+
+## Testnet locker
+
+Pons and pools.trade are not on the testnet demo. `ParaapeTestnetLocker` is an allowlisted adapter. The deployer attests a pool after adding liquidity. `DeployDemoMarket` attests and calls `createMarket`. `DeployMemePool` attests and stops, so the vault address is zero until Underwrite deposits.
+
+The demo attestation can satisfy the 25,000 USDG floor while the v4 position itself is the script default of 10,000 USDG. Read the script logs for the reserves you actually added.
+
+## Demo market shape
+
+Default liquidity is 1 billion tokens (18 decimals) and 10,000 USDG (6 decimals), full range. Fee 3000, tick spacing 60, hooks at the zero address. The init tick comes from that ratio unless `DEMO_INIT_TICK` is set (a multiple of 60).
+
+## Mainnet shape
+
+The same factory rules apply to a Pons or pools.trade pool once that lock adapter is allowlisted and the pool passes depth. The trigger is still this pool's sampled average, not the launchpad's auction TWAP and not an off-chain index.

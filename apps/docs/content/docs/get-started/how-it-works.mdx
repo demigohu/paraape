@@ -1,0 +1,61 @@
+---
+title: How it works
+description: Hold the coin, name the crash, get paid in USDG if the drop sticks.
+---
+
+Paraape is two sides of one market.
+
+**Buyers** keep the memecoin and pay USDG for cover. **Underwriters** deposit USDG behind one coin and collect premiums. If the named crash is still there, the underwriters pay the buyer. If it is not, they keep the premium.
+
+## The path
+
+<Mermaid chart={`flowchart TD
+  buy[Buy cover in USDG]
+  arm[Cover on after 30 min]
+  live[Settle before expiry]
+  miss[Premium stays with LPs]
+  hold[USDG reserved for 2 hours]
+  bad[Void. Capital returns.]
+  fee[Spam fee. Payout stays.]
+  paid[Buyer paid in USDG]
+  buy --> arm --> live
+  live -->|recovered, sold, or too early| miss
+  live -->|drop holds and bag is held| hold
+  hold -->|LP recheck fails| bad
+  hold -->|LP recheck holds| fee
+  hold -->|deadline passes| paid
+  fee --> paid
+  classDef pay fill:#ff641c,stroke:#050505,color:#050505
+  class paid pay`} />
+
+The shipped keeper records the price. It does not call settle or release.
+
+## One coin, one pool
+
+Every insured token has its own vault. USDG deposited on token A cannot pay a policy on token B. LPs deposit USDG only. They never deposit the memecoin.
+
+A market can be opened by anyone once the pool exists, one side is the token, the quote is USDG or WETH, and a lock adapter attests that the liquidity is locked and deep enough. See [Markets](/docs/protocol/markets).
+
+## What you pick
+
+The buyer picks three things:
+
+1. **The drop.** How far price must fall from the entry: 50, 60, 70, 80, 90, or 95 percent.
+2. **The term.** How long the policy stays on: 1, 3, 7, 14, or 30 days. This is not a crash window. A slow bleed pays the same as a fast dump if the drop is still there.
+3. **The payout.** How much USDG to cover, up to a cap set by the bag, the free LP capital, and the pool depth.
+
+The underwriter picks a token and one drop. A milder drop they back can also fill a deeper policy. A deeper cell cannot fill a milder policy, because that LP did not agree to pay on a smaller fall. See [Grid](/docs/protocol/grid).
+
+## When it pays
+
+Cover turns on 30 minutes after purchase. The entry price is the 5-minute average at that moment, not the price at the click and not a later high.
+
+Someone calls `settle`. The contract checks that the current 5-minute average is still down by the bought drop, that the last samples agree, and that the buyer still holds the tokens. USDG is reserved. After 2 hours, `release` pays the buyer. A backing LP can [challenge](/docs/protocol/challenge) during that window. The buyer does not file a claim.
+
+## What it does not do
+
+- It does not sell the bag for you.
+- It does not pay a wick that recovers before the samples agree.
+- It does not pay if the buyer sold the covered tokens.
+- It does not use Dexscreener, GMGN, or a Chainlink memecoin feed as the trigger. Chainlink ETH/USD is only the WETH-to-USDG rate.
+- The shipped keeper records prices. It does not settle or release for you.

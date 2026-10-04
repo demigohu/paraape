@@ -1,0 +1,49 @@
+---
+title: Use the app
+description: What you click on Protect, Underwrite, and Dashboard.
+---
+
+Open the app at [paraape.xyz](https://paraape.xyz). These shots are the live testnet UI with a wallet already connected on Robinhood Chain testnet (chain ID 46630). The market chips are whatever the indexer currently has. They are not a permanent token list.
+
+The Pay, Deposit, and Settle buttons are shown and were not submitted.
+
+## Start
+
+The home page is the front door. **Protect a token** buys cover. **Underwrite** backs a coin with USDG.
+
+![Home. Protect a token buys cover. Underwrite backs a coin.](/guide/01-home.png)
+
+## Buy cover
+
+Open **Protect**. Paste the token contract, or click one of the indexed markets. The wallet has to hold that token. The balance next to **Trigger** is what this wallet can cover.
+
+![Quote. Pick the drop, the payout, and the term. The aside is the premium.](/guide/08-protect-quote.png)
+
+1. **Trigger.** Broad is −70%, Standard is −80%, Deep is −90%. Custom snaps to the nearest on-chain drop: 50, 60, 70, 80, 90, or 95 percent.
+2. **Payout (USDG).** The most you can receive if the drop is still there. **Max** fills the largest amount the cells, the pool depth, and the bag can back.
+3. **Coverage period.** 1, 3, 7, 14, or 30 days. The date under the radios is the expiry.
+4. **Pay.** The black aside quotes the premium in USDG for that drop, payout, and term. Confirm it in the wallet. This shot stops on the button.
+
+Cover turns on about 30 minutes after that transaction. The coins stay in the wallet. Selling them below the covered balance voids the payout.
+
+If the token has no vault yet, Protect says so and links to Underwrite. A USDG deposit opens the market when the pool is locked.
+
+## Back a coin
+
+Open **Underwrite**. Paste the same kind of token address. Pick the drop you are willing to pay, then the USDG amount. The amount field shows this wallet's USDG balance, and the button is the deposit.
+
+A milder cell can also fill a deeper policy. A deeper cell does not fill a milder one. Standard in this shot is −80%.
+
+![Underwrite connected. The aside is the cell, and the button is the deposit.](/guide/09-underwrite-deposit.png)
+
+Confirm the deposit in the wallet. This shot stops on the button. Premiums from policies that use your cell stream to you. A payout that settles comes out of that cell.
+
+## After you pay
+
+**Dashboard** lists cover you bought, premiums you paid, and USDG you deposited. An **Active** row has **Settle**. A **Paid** row has no further action.
+
+![Dashboard after connect. Active cover can be settled. A paid policy is done.](/guide/07-dashboard-policies.png)
+
+**Settle** pays only if the 5-minute average is still down by the drop you bought and you still hold the tokens. Too early, recovered, or the bag was sold, and the transaction reverts.
+
+After a successful settle the row counts down for two hours. A backing LP who is not the buyer can press **Challenge** during that window. When the countdown ends, **Receive payout** sends the USDG. **Close policy** is there once the term has ended with no settle. The premium stays with the backers. This wallet had no row in that window, so those buttons are not in the shot.

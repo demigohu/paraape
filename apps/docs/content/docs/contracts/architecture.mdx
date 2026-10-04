@@ -1,0 +1,60 @@
+---
+title: Architecture
+description: One factory, one vault per token, a sampled oracle, and a risk engine with no custody.
+---
+
+## Call path
+
+Buyers and underwriters talk to `InsuranceVault`. The factory deploys a vault per token. Addresses for the current testnet deploy are on [Deploy](/docs/contracts/deploy). The vault asks `IPriceSource` for the memecoin average and, when the quote is WETH, for the USDG rate. The insured-token average comes from `PriceObserver`, which reads the PoolManager. The risk engine only computes. It cannot move funds.
+
+Anyone may record. Anyone may settle. A backing LP may challenge. The guardian can change protocol parameters. The guardian does not rule on a price and cannot withdraw LP funds.
+
+<Mermaid chart={`flowchart TD
+  subgraph off [Off chain]
+    web[Web app]
+    keeper[Keeper]
+    indexer[Indexer]
+  end
+  subgraph on [On chain]
+    factory[MarketFactory]
+    vault[InsuranceVault]
+    observer[PriceObserver]
+    engine[BoundedRiskEngine]
+    pool[Uniswap v4 PoolManager]
+  end
+  factory -->|"one vault per token"| vault
+  web -->|"buy, deposit, settle, release"| vault
+  keeper -->|"record only"| observer
+  observer -->|"current tick"| pool
+  vault -->|"5-minute average"| observer
+  vault -->|"premium and depth, no custody"| engine
+  vault -->|"events"| indexer
+  indexer -->|"markets and policies"| web`} />
+
+Chainlink ETH/USD is consulted only when the pool is quoted in WETH. A USDG-quoted pool does not use it.
+
+## Solidity
+
+| Contract | Role |
+| --- | --- |
+| `MarketFactory` | Permissionless `createMarket`, pool checks, insider addresses, config copied onto the vault |
+| `InsuranceVault` | Cells, policies, premiums, settle, challenge, release |
+| `PriceObserver` | Sampled TWAP ring buffer |
+| `V4PoolTickSource` | Current tick from the PoolManager |
+| `V4ChainlinkPriceSource` | Meme average plus Chainlink ETH/USD |
+| `V4PriceSource` | Meme average plus an optional WETH/USDG pool |
+| `ParaapeRiskEngine` | Premium, vol, APY, depth |
+| `BoundedRiskEngine` | Caps the engine's maximum rate. This is the address vaults call |
+| `ParaapeTestnetLocker` | Testnet lock attestation |
+| `V4LiquidityRouter` | Add liquidity. Not a swap router |
+| `V4SwapRouter` | Demo swaps only |
+
+`GridLib` holds the six drops and five terms. `ProtocolConfig` holds the parameters in [Parameters](/docs/contracts/parameters).
+
+## Stylus
+
+`apps/contracts-stylus` is the Rust twin of the premium and depth math. It is not the live engine while Stylus activation is paused on Robinhood Chain (`activationGas` is `2^64 - 1`). `DeployParaape` with an empty `STYLUS_RISK_ENGINE` deploys the Solidity engine and wraps it.
+
+## What does not upgrade
+
+A vault keeps the bytecode, engine, and config from the factory that created it. Deploying a new factory leaves old policies on the old rules. That includes the challenge flow.

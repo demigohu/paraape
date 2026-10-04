@@ -13,7 +13,7 @@ pnpm install
 pnpm web
 ```
 
-Or `cd apps/web && pnpm dev`. Open [http://localhost:3000](http://localhost:3000). Use `localhost`, not `127.0.0.1`, so hot reload can connect.
+Or `cd apps/web && pnpm dev`. The live app is [paraape.xyz](https://paraape.xyz).
 
 ```bash
 pnpm --filter web build
@@ -39,7 +39,7 @@ Next loads `.env`. Restart `pnpm dev` after you change it.
 | `NEXT_PUBLIC_PAPE_ADDRESS` | Listed demo token, for the wallet faucet |
 | `NEXT_PUBLIC_FRESH_ADDRESS` | Unlisted demo token, for the wallet faucet |
 | `NEXT_PUBLIC_REOWN_PROJECT_ID` | Project id from [dashboard.reown.com](https://dashboard.reown.com) |
-| `NEXT_PUBLIC_APP_URL` | Optional. WalletConnect metadata. Default `http://localhost:3000` |
+| `NEXT_PUBLIC_APP_URL` | Optional. WalletConnect metadata. Default `https://paraape.xyz` |
 | `NEXT_PUBLIC_INDEXER_URL` | Optional. Default `/api/indexer` |
 | `INDEXER_PROXY_URL` | Where that proxy forwards. Default `http://127.0.0.1:42069` |
 

@@ -21,7 +21,7 @@ export const LOCKER_ADDRESS = (process.env.NEXT_PUBLIC_LOCKER_ADDRESS ?? "0x") a
 export const POOL_MANAGER_ADDRESS = (process.env.NEXT_PUBLIC_POOL_MANAGER_ADDRESS ?? "0x") as Address;
 
 export const APP_URL =
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
+  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://paraape.xyz";
 
 /** Reown / WalletConnect Cloud project id — https://dashboard.reown.com */
 export const REOWN_PROJECT_ID =

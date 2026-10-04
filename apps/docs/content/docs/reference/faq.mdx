@@ -1,0 +1,40 @@
+---
+title: FAQ
+description: Short answers to the questions that keep coming up.
+---
+
+## Does a fast crash pay more than a slow one?
+
+No. The line is a drop from the entry average, any time before expiry. Speed is not an input.
+
+## Why did settle revert right after I bought?
+
+Cover is inactive until 30 minutes after purchase. Also, the 5-minute average and the last three samples have to already show the drop. A fresh dump needs a few minutes, and a few recordings, before the average catches up.
+
+## Why did settle revert after I sold?
+
+The payout requires the buyer to still hold the balance from purchase. Sell from another wallet if you are simulating a crash.
+
+## Can I challenge my own payout?
+
+No. Challenge is for a backing LP, and the contract rechecks the same rules. If they still hold, the caller pays 10 USDG and the payout stays. If you are on an old vault, stop and read [Challenge](/docs/protocol/challenge). That vault may still use a bond and a guardian.
+
+## Why is the approve amount the whole premium?
+
+The app approves the premium or the deposit you are sending. A larger allowance from an earlier build can remain on the token until you revoke it.
+
+## Where does the memecoin price come from on mainnet?
+
+The same `PriceObserver`, sampling that token's pool. An oracle hook is used only if the pool was created with one. Chainlink ETH/USD converts WETH quotes. Off-chain charts do not settle.
+
+## Why is Stylus empty?
+
+New Stylus activations are paused on this chain. The Solidity engine is the live one. The Rust crate is the same math, ready for when activation works.
+
+## Do I need a new factory to change the rules?
+
+Yes. Vaults are not upgradeable. New parameters, a new engine, or the new challenge flow apply to vaults created after the new `DeployParaape`.
+
+## Where are the addresses?
+
+In the deploy logs, then in each app's `.env`. This site does not pin a factory address, because the next deploy replaces it. Chain infrastructure (PoolManager, WETH) is chain config, not a Paraape release.

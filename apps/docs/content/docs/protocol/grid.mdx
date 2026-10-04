@@ -1,0 +1,55 @@
+---
+title: Grid
+description: Six drops. Five terms. LPs pick a drop. Buyers pick a drop and a term.
+---
+
+Liquidity sits on a fixed grid so buyers and underwriters meet in a few cells instead of a custom market for every number.
+
+## Drops
+
+50, 60, 70, 80, 90, and 95 percent below the entry average.
+
+95 percent is the deepest line. A 100 percent line would require the average to reach zero, which a TWAP almost never does, so it would never pay.
+
+The buyer buys one drop. The underwriter deposits into one drop. Duration is not an LP axis.
+
+## Terms
+
+1, 3, 7, 14, and 30 days.
+
+The term sets `expiry` and the premium horizon. It does not slice the cells. An LP who backs 70 percent can fill a 1-day policy and a 30-day policy at that drop.
+
+`expiry` is purchase time plus the term. Cover is only enforceable after `activeFrom`, which is 30 minutes later. The clock and the live window are not the same length.
+
+## Who can fill whom
+
+A cell can back a policy when the policy needs a drop at least as deep as the cell agreed to pay.
+
+```
+cell backs policy  when  policy drop >= cell drop
+```
+
+<Mermaid chart={`flowchart LR
+  deep["90 percent cell"]
+  mild["70 percent cell"]
+  ask90["Buyer asks 90 percent"]
+  ask70["Buyer asks 70 percent"]
+  ask90 --> deep
+  ask90 --> mild
+  ask70 --> mild
+  classDef pay fill:#ff641c,stroke:#050505,color:#050505
+  class deep,mild pay`} />
+
+A 90 percent buyer can be filled by both cells, strictest first. A 70 percent buyer cannot touch the 90 percent cell. That LP never agreed to pay on a smaller fall.
+
+Example. Cell A is 90 percent. Cell B is 70 percent.
+
+| Buyer asks | A | B | Fill |
+| --- | --- | --- | --- |
+| 90% | Yes | Yes | A first, then B |
+| 80% | No | Yes | B |
+| 60% | No | No | Purchase reverts |
+
+Strictest cell first keeps deep-only capital available for deep policies.
+
+The buyer sets a minimum coverage. If eligible cells cannot supply at least that much, the purchase reverts.

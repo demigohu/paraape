@@ -1,0 +1,30 @@
+---
+title: Safeguards
+description: Seven checks between a fake crash and the payout.
+---
+
+One person can still use many wallets. Each layer closes a different gap. None of them is a complete proof of identity.
+
+| Layer | What it does |
+| --- | --- |
+| Holding | The balance at purchase must still be there at settle. Selling the bag voids the payout. |
+| Concentration | A wallet above `H` of supply cannot buy. Default `H` is 1 percent. |
+| Insiders | The token deployer and the launchpad creator stored at `createMarket` cannot buy. |
+| Entry guard | Purchases revert if price already fell more than `G` over the last hour. Default `G` is 20 percent. Cover also waits 30 minutes so the entry average exists. |
+| Depth cap | Total coverage that a drop would pay stays under `alpha` times the locked quote a seller must consume to push the pool that far. Default `alpha` is 0.5. |
+| Challenge | After settle, a backing LP can recheck. See [Challenge](/docs/protocol/challenge). |
+| Oracle clamp | Each new sample can move at most `MAX_TICK_MOVE` (9,116 ticks, about 2.5×) from the previous one. Triggers use averages, and persistence requires the drop across blocks. |
+
+## Depth cap
+
+`D(s)` is the quote a seller must absorb to push the pool down by `s`, counting locked liquidity only. Withdrawable liquidity does not count. Otherwise someone could pull liquidity and crash the pool with a small sell.
+
+For a full-range pool, `D(s) = y × (1 - sqrt(1 - s))`, where `y` is the quote reserve.
+
+A crash of depth `s` also triggers every milder policy, so the cap is checked at purchase for every grid line at least as deep as the policy.
+
+Deeper drops get more capacity because they cost more to fake. Only a large holder can move a deep pool that far, and those holders are who the first layers are aimed at.
+
+## What is still open
+
+Wallets that never transfer to each other can split a bag. The contract sees the covered balance, the average, and whether the challenger has shares. It does not accept an off-chain claim that two wallets are the same person. That gap is listed under [Risks](/docs/reference/risks).

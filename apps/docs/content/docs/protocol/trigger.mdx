@@ -1,0 +1,60 @@
+---
+title: Trigger
+description: The policy pays when the 5-minute average is still down by the drop you bought.
+---
+
+A policy pays when someone calls `settle` and the contract still sees the drop. There is no crash-speed window. A slow fall to the line pays the same as a fast one. A wick that recovers does not.
+
+## Definitions
+
+- `s` is the drop, as a fraction. 80 percent means `s = 0.80`.
+- `L` is 5 minutes.
+- `P(t)` is the time-weighted average price over the `L` minutes ending at `t`, in the pool's quote asset.
+- `activeFrom` is purchase time plus 30 minutes.
+- The entry is `P(activeFrom)`. A pump after that does not move the line.
+
+## The four checks
+
+<Mermaid chart={`flowchart TD
+  settle[settle with a policy id]
+  live[Inside the live window]
+  price[Average still at or below the line]
+  bag[Buyer still holds the tokens]
+  samples[Last 3 samples each still down]
+  ok[Reserve USDG. Status is pending.]
+  stop[Revert. No payout.]
+  settle --> live
+  live -->|no| stop
+  live -->|yes| price
+  price -->|no| stop
+  price -->|yes| bag
+  bag -->|no| stop
+  bag -->|yes| samples
+  samples -->|no| stop
+  samples -->|yes| ok
+  classDef pay fill:#ff641c,stroke:#050505,color:#050505
+  class ok pay`} />
+
+`settle` succeeds only when:
+
+1. `activeFrom <= now <= expiry`
+2. `P(now) <= (1 - s) × P(entry)`
+3. The buyer's balance is still at least the amount stored at purchase.
+4. **Persistence.** The same comparison holds at each of the last `K` observations (default 3). Each observation is in a different block, and each is at or after `activeFrom`. Each one is judged on its own 5-minute average, not on a single print.
+
+The caller passes only the policy id. The vault reads the averages itself.
+
+## Worked example
+
+A 90 percent policy, 7 days. Entry average is 1.0. On day 6 the 5-minute average is 0.09, and the last three recordings are still there. The policy can pay. A print at 0.09 that recovers to 0.5 before those three recordings cannot.
+
+An 80 percent policy pays only if price is at or below 20 percent of the entry. The average fully reflects a dump only after several minutes at the new price, and then the last three samples have to agree.
+
+## What the line is not
+
+- Not the spot price at the moment you click buy.
+- Not the high after you buy.
+- Not a 5-minute crash window.
+- Not an off-chain chart.
+
+If you dump before `activeFrom`, the entry average is the crashed price and settle has no drop left to see.

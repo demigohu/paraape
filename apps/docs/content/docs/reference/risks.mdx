@@ -1,0 +1,32 @@
+---
+title: Risks
+description: What can still go wrong. These are open, not solved.
+---
+
+## Recording liveness
+
+If nobody records during a crash, a real drop can be impossible to prove. Purchases and settles record as a side effect, and the keeper records on a timer, but a gap in samples is still a gap. Storage-proof settlement, which would read the pool without a keeper, is not built.
+
+## Sampled average
+
+Price between two recordings is treated as constant. A move that happens and reverts inside the 30-second gap can be invisible. The clamp also delays a very large move across more than one sample.
+
+## Split wallets
+
+The holding check sees one buyer. A bag split across wallets that never transfer to each other is not linked on-chain. Challenge cannot take an off-chain allegation as evidence.
+
+## Parameters are not calibrated
+
+Drops, `alpha`, the holder limit, the entry guard, and the premium curve are initial values. They are not a fit to historical Robinhood Chain rugs. A premium can be too cheap or too expensive until they are.
+
+## Cold start
+
+A market with no USDG cannot sell cover. Nothing in the protocol forces underwriters to show up.
+
+## Old vaults
+
+Rules in this site describe the current source. Vaults from an older factory keep that factory's bytecode, including the older challenge. Read the vault you are using.
+
+## Not a profit promise
+
+Cover pays a named drop from the entry average, capped by what you bought. It does not hedge a slow grind that never reaches the line, a wick that recovers, or a sale of the bag.

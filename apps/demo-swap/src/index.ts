@@ -206,7 +206,8 @@ type Trader = {
   key: DemoPoolKey;
   poolRef: Hex;
   memeIsC0: boolean;
-  buyNext: boolean;
+  buying: boolean;
+  legUntil: number;
 };
 
 async function main() {
@@ -221,6 +222,8 @@ async function main() {
   const sellOnly = envOr("SIM_SELL_ONLY", "0") !== "0";
   if (buyOnly && sellOnly) throw new Error("Set only one of SIM_BUY_ONLY or SIM_SELL_ONLY");
   const sleepMs = Number(envOr("SIM_SLEEP_MS", "5000"));
+  // Keeper samples about every 35s. A round trip faster than that lands flat, so vol stays low and premium sits on the floor.
+  const legMs = Number(envOr("SIM_LEG_MS", "120000"));
   const observer = process.env.PRICE_OBSERVER_ADDRESS?.trim() as Address | undefined;
   const poolManager = requireEnv("POOL_MANAGER_ADDRESS") as Address;
 
@@ -279,6 +282,7 @@ async function main() {
         functionName: "decimals",
       }),
     );
+    const staggeredSell = traders.length % 2 === 1;
     traders.push({
       label: symbol,
       meme,
@@ -288,7 +292,8 @@ async function main() {
       key,
       poolRef: poolRefFromKey(key),
       memeIsC0: memeIsCurrency0(meme, key),
-      buyNext: !sellOnly,
+      buying: sellOnly ? false : buyOnly ? true : !staggeredSell,
+      legUntil: Date.now() + legMs,
     });
   }
 
@@ -304,7 +309,7 @@ async function main() {
   }
 
   console.log(
-    `[demo-swap] markets=${traders.map((t) => t.label).join(",")} usdgPerSwap=${formatUnits(usdgPerSwap, usdgDecimals)} USDG continuous=${continuous} buyOnly=${buyOnly} sellOnly=${sellOnly}`,
+    `[demo-swap] markets=${traders.map((t) => t.label).join(",")} usdgPerSwap=${formatUnits(usdgPerSwap, usdgDecimals)} USDG continuous=${continuous} legMs=${legMs} buyOnly=${buyOnly} sellOnly=${sellOnly}`,
   );
   if (sellOnly) {
     console.warn(
@@ -340,8 +345,14 @@ async function main() {
 
   for (let i = 0; continuous ? !stop : i < swapCount && !stop; i++) {
     const trader = traders[i % traders.length]!;
-    const buy = sellOnly ? false : buyOnly || trader.buyNext;
-    if (!buyOnly && !sellOnly) trader.buyNext = !trader.buyNext;
+    if (!buyOnly && !sellOnly && Date.now() >= trader.legUntil) {
+      trader.buying = !trader.buying;
+      trader.legUntil = Date.now() + legMs;
+      console.log(
+        `[demo-swap] ${trader.label} ${trader.buying ? "buy" : "sell"} leg for ${legMs}ms`,
+      );
+    }
+    const buy = sellOnly ? false : buyOnly || trader.buying;
 
     try {
       if (buy) {
@@ -370,9 +381,12 @@ async function main() {
           functionName: "balanceOf",
           args: [trader.account.address],
         });
-        if (memeIn === 0n || bal < memeIn) {
+        const amountIn = bal < memeIn ? bal : memeIn;
+        if (amountIn === 0n) {
+          trader.buying = true;
+          trader.legUntil = Date.now() + legMs;
           console.log(
-            `[demo-swap] ${trader.label} skip sell: need ${formatUnits(memeIn, trader.memeDecimals)} ${trader.label}, wallet has ${formatUnits(bal, trader.memeDecimals)}`,
+            `[demo-swap] ${trader.label} no tokens to sell, switching to a buy leg`,
           );
         } else {
           const hash = await swapExactMemeForUsdg(
@@ -382,10 +396,11 @@ async function main() {
             trader.key,
             trader.memeIsC0,
             trader.account.address,
-            memeIn,
+            amountIn,
           );
+          const note = amountIn < memeIn ? "partial, wallet was short" : `~${formatUnits(usdgPerSwap, usdgDecimals)} USDG`;
           console.log(
-            `[demo-swap] ${trader.label} sell ${formatUnits(memeIn, trader.memeDecimals)} ${trader.label} (~${formatUnits(usdgPerSwap, usdgDecimals)} USDG) tx=${hash}`,
+            `[demo-swap] ${trader.label} sell ${formatUnits(amountIn, trader.memeDecimals)} ${trader.label} (${note}) tx=${hash}`,
           );
         }
       }

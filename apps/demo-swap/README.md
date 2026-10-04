@@ -82,6 +82,7 @@ Use a different `PRIVATE_KEY` from the keeper when both broadcast. This script r
 | `SIM_CONTINUOUS` | `1` ignores `SIM_SWAP_COUNT` and runs until Ctrl+C |
 | `SIM_USDG_PER_SWAP` | 6-decimal USDG notional. Buys spend it. Sells size the meme from the spot price |
 | `SIM_SLEEP_MS` | Pause between swaps |
+| `SIM_LEG_MS` | How long one market buys, or sells, before flipping. Default 120000. Shorter than the keeper interval (~35s) round-trips inside one sample and the premium stays on the floor |
 | `SIM_BUY_ONLY` | `1` keeps the sell leg off |
 | `SIM_SELL_ONLY` | `1` keeps the buy leg off |
 | `SIM_RECORD_AFTER_SWAP` | `1` only while the keeper is off |

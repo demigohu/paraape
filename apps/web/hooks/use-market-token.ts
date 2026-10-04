@@ -61,7 +61,8 @@ export function useMarketToken(
     queryKey: ["realized-vol", market?.vault],
     queryFn: () => fetchRealizedVol(publicClient!, market!.vault),
     enabled: !!market?.vault && !!publicClient,
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 15_000,
   });
 
   const marketQ = useQuery({
